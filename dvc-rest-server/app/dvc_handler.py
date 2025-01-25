@@ -151,6 +151,20 @@ async def track_data(user_id: str, project_id: str, files: list):
     except Exception as e:
         raise Exception(f"Failed to track data: {str(e)}")
 
+async def track_files(user_id: str, project_id: str, files: list):
+    """
+    Tracks data files and directories using DVC.
+    """
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    try:
+        for file in files:
+            await run_command_async(f"dvc add {file}", cwd=project_path)
+        await run_command_async("git commit -m 'tracking: {files}'", cwd=project_path)
+        
+        return "Data tracked successfully."
+    except Exception as e:
+        raise Exception(f"Failed to track data: {str(e)}")
+
 async def set_remote(user_id: str, project_id: str, remote_url: str, remote_name: str):
     """
     Sets a DVC remote for the project.
@@ -296,46 +310,94 @@ async def add_stages(user_id: str, project_id:str, stages: list):
     except CalledProcessError as e:
         raise Exception(f"Failed to add stages: {e.stderr or e.stdout}")
     
-def clean_git_repo(repo_path: str):
+async def add_stage(user_id: str, project_id:str, name: str, deps: list = None, outs: list = None, params: list = None, metrics: list = None, plots: list = None, command: str = None):
     """
-    Cleans the Git repository by stashing or discarding uncommitted changes.
-    """
-    try:
-        run(["git", "reset", "--hard"], cwd=repo_path, check=True)
-        run(["git", "clean", "-fd"], cwd=repo_path, check=True)
-    except CalledProcessError as e:
-        raise Exception(f"Failed to clean Git repository: {e}")
-
-async def run_experiment(user_id, project_id, experiment_name: str, command: str):
-    """
-    Runs a DVC experiment.
+    Adds DVC stages to connect code and data.
     """
     project_path = os.path.join(REPO_ROOT, user_id, project_id)
     try:
-        await run_command_async(f"dvc exp run -n {experiment_name} {command}", cwd=project_path)
-        return f"Experiment {experiment_name} run successfully."
-    except Exception as e:
-        raise Exception(f"Failed to run experiment {experiment_name}: {str(e)}")
+        stage = f"dvc stage add -n {name}"
+        if deps:
+            for dep in deps:
+                stage += f" -d {dep}"
+        if outs:
+            stage += f" -o {' -o '.join(outs)}"
+        if params:
+                stage += f" -p {' -p '.join(params)}"
+        if metrics:
+            for metric in metrics:
+                stage += f" -M {metric}"
+        if plots:
+            for plot in plots:
+                stage += f" -m {plot}"
+        if command:
+            stage += f" {command}"
+        await run_command_async(stage, cwd=project_path)
+        await run_command_async("git add dvc.yaml", cwd=project_path)
+        await run_command_async("git commit -m 'added stage'", cwd=project_path)
+        return "Stage added successfully."
+    except CalledProcessError as e:
+        raise Exception(f"Failed to add stage: {e.stderr or e.stdout}")
+
+async def repro(
+    user_id: str,
+    project_id: str,
+    target: str = None,
+    pipeline: bool = False,
+    force: bool = False,
+    dry_run: bool = False,
+    no_commit: bool = False,
+    cwd: str = None,
+):
+    """
+    Run the `dvc repro` command with various options to reproduce a pipeline stage.
+
+    Args:
+        user_id (str): The ID of the user initiating the repro.
+        project_id (str): The ID of the project containing the stage.
+        target (str, optional): Specify the target stage or file to reproduce.
+        pipeline (bool, optional): Reproduce the entire pipeline containing the target.
+        force (bool, optional): Force reproduction even if outputs are up-to-date.
+        dry_run (bool, optional): Show what will be done without actually executing.
+        no_commit (bool, optional): Do not commit changes to cache.
+        cwd (str, optional): Directory to run the `dvc repro` command.
+
+    Returns:
+        str: The output of the `dvc repro` command.
+
+    Raises:
+        Exception: If the `dvc repro` command fails.
+    """
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
     
-async def define_pipeline(user_id, project_id):
-    """
-    Defines a DVC pipeline.
-    """
-    project_path = os.path.join(REPO_ROOT, user_id, project_id)
-    try:
-        await run_command_async(f"git add .gitignore data/.gitignore dvc.yaml", cwd=project_path)
-        await run_command_async("git commit -m 'added pipeline'", cwd=project_path)
-        return f"Pipeline defined successfully."
-    except CalledProcessError as e:
-        raise Exception(f"Failed to define pipeline: {e.stderr or e.stdout}")  
+    # Build the command
+    command = "dvc repro"
+    if target:
+        command += f" {target}"
+    if pipeline:
+        command += " --pipeline"
+    if force:
+        command += " --force"
+    if dry_run:
+        command += " --dry"
+    if no_commit:
+        command += " --no-commit"
 
-async def run_pipeline(user_id, project_id):
-    """
-    Runs a DVC pipeline.
-    """
-    project_path = os.path.join(REPO_ROOT, user_id, project_id)
-    try:
-        await run_command_async(f"run repro", cwd=project_path)
-        await run_command_async("git add dvc.lock && git commit -m 'first pipeline repro'", cwd=project_path)
-    except CalledProcessError as e:
-        raise Exception(f"Failed to run pipeline pipeline: {e.stderr or e.stdout}")
+    # Print debugging info (optional)
+    print(f"Running command: {command} in {project_path}")
+
+    # Run the command asynchronously
+    process = await asyncio.create_subprocess_shell(
+        command,
+        cwd=project_path,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+
+    if process.returncode != 0:
+        raise Exception(f"Error running `dvc repro`: {stderr.decode().strip()}")
+    
+    await run_command_async("git add dvc.lock && git commit -m 'pipeline repro'", cwd=project_path)
+
+    return stdout.decode().strip()
