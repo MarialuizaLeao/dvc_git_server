@@ -415,3 +415,63 @@ async def dvc_exp_save(user_id: str, project_id: str, name: str = None, force: b
         raise Exception(f"`dvc exp save` failed: {stderr.decode().strip()}")
 
     return stdout.decode().strip()
+
+async def dvc_plots_diff(
+    user_id: str, project_id:str,
+    targets: list = None,
+    a_rev: str = None,
+    b_rev: str = None,
+    templates_dir: str = None,
+    json: bool = False,
+    html: bool = False,
+    no_html: bool = False,
+    out: str = None,
+):
+    """
+    Show differences in plots between two revisions using `dvc plots diff`.
+
+    Args:
+        cwd (str): The directory to run the command in.
+        targets (list, optional): List of plot files to include.
+        a_rev (str, optional): The starting revision.
+        b_rev (str, optional): The ending revision.
+        templates_dir (str, optional): Directory containing custom templates.
+        json (bool, optional): Output in JSON format.
+        html (bool, optional): Generate an HTML file and return its path.
+        no_html (bool, optional): Skip generating an HTML file.
+        out (str, optional): Directory or file path for saving plots.
+
+    Returns:
+        str: The output of the `dvc plots diff` command.
+
+    Raises:
+        Exception: If the `dvc plots diff` command fails.
+    """
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    command = "dvc plots diff"
+    if targets:
+        command += " " + " ".join(targets)
+    if a_rev:
+        command += f" {a_rev}"
+    if b_rev:
+        command += f" {b_rev}"
+    if templates_dir:
+        command += f" --templates-dir {templates_dir}"
+    if json:
+        command += " --json"
+    if html:
+        command += " --html"
+    if no_html:
+        command += " --no-html"
+    if out:
+        command += f" --out {out}"
+
+    process = await asyncio.create_subprocess_shell(
+        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+
+    if process.returncode != 0:
+        raise Exception(f"`dvc plots diff` failed: {stderr.decode().strip()}")
+
+    return stdout.decode().strip()

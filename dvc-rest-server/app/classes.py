@@ -3,7 +3,6 @@ from typing import List, Optional
 
 class ProjectRequest(BaseModel):
     username: str
-    user_id: str = None
     project_name: str
     
 class StagesRequest(BaseModel):
@@ -110,3 +109,38 @@ class RunExperimentRequest(BaseModel):
     keep_running: bool = False
     ignore_errors: bool = False
     targets: Optional[List[str]] = None
+    
+class CloneRequest(BaseModel):
+    remote_url: str
+    
+class MetricsShowRequest(BaseModel):
+    all_commits: bool = False
+    json: bool = False
+    yaml: bool = False
+    
+class MetricsDiffRequest(BaseModel):
+    a_rev: Optional[str] = None
+    b_rev: Optional[str] = None
+    all: bool = False
+    precision: Optional[int] = None
+    json: bool = False
+    csv: bool = False
+    md: bool = False
+    
+class PlotsShowRequest(BaseModel):
+    targets: Optional[List[str]] = None
+    json: bool = False
+    html: bool = False
+    no_html: bool = False
+    templates_dir: Optional[str] = None
+    out: Optional[str] = None
+    
+class PlotsDiffRequest(BaseModel):
+    targets: Optional[List[str]] = None
+    a_rev: Optional[str] = None
+    b_rev: Optional[str] = None
+    templates_dir: Optional[str] = None
+    json: bool = False
+    html: bool = False
+    no_html: bool = False
+    out: Optional[str] = None

@@ -16,11 +16,13 @@ from app.dvc_handler import (
     checkout_dvc_branch as dvc_checkout_dvc_branch,
     create_dvc_branch as dvc_create_dvc_branch,
     delete_dvc_branch as dvc_delete_dvc_branch,
+    dvc_metrics_show,
+    dvc_metrics_diff,
+    dvc_plots_show,
+    dvc_plots_diff,
     add_stages,
     add_stage,
-    run_experiment,
-    define_pipeline,
-    run_pipeline
+    repro
 )
 from app.dvc_exp import *
 
@@ -36,18 +38,14 @@ async def get_users():
         users.append(user)
     return users
     
-@router.post("/project/create")
-async def create_new_project(request: ProjectRequest):
+@router.post("/{user_id}/project/create")
+async def create_new_project(user_id: str, request: ProjectRequest):
     """
     Creates a new project directory and initializes Git/DVC.
     """
-    # Check if user exists
-    user = await users_collection.find_one({"_id": ObjectId(request.user_id)})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
     
     # Check if project name is unique for the user
-    project = await projects_collection.find_one({"project_name": request.project_name, "user_id": request.user_id})
+    project = await projects_collection.find_one({"project_name": request.project_name, "user_id": user_id})
     if project:
         raise HTTPException(status_code=400, detail="Project name already exists for the user")
     
@@ -58,11 +56,11 @@ async def create_new_project(request: ProjectRequest):
 
         # Add the project to the user's projects array
         await users_collection.update_one(
-            {"_id": ObjectId(request.user_id)}, {"$push": {"projects": str(result.inserted_id)}}
+            {"_id": ObjectId(user_id)}, {"$push": {"projects": str(result.inserted_id)}}
         )
         
         # Create the project directory and initialize DVC
-        project_path = await dvc_create_project(request.user_id, str(result.inserted_id))
+        project_path = await dvc_create_project(user_id, str(result.inserted_id))
             
         return {
             "message": f"Project {request.project_name} for user {request.username} created successfully.",
@@ -70,10 +68,10 @@ async def create_new_project(request: ProjectRequest):
         }
     except Exception as e:
         # Rollback the project creation
-        await projects_collection.delete_one({"_id": ObjectId(request.user_id)})
+        await projects_collection.delete_one({"_id": ObjectId(user_id)})
         # Remove the project from the user's projects array
         await users_collection.update_one(
-            {"_id": ObjectId(request.user_id)}, {"$pull": {"projects": str(result.inserted_id)}}
+            {"_id": ObjectId(user_id)}, {"$pull": {"projects": str(result.inserted_id)}}
         )
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -85,6 +83,18 @@ async def get_url(user_id: str, project_id: str, request: GetUrlRequest):
     try:
         result = await dvc_get_url(user_id, project_id, request.url, request.dest)
         return {"url": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/clone_project")
+async def clone_project(user_id: str, project_id: str, request: CloneRequest):
+    """
+    Clones a project from a remote repository.
+    """
+    try:
+        # Assuming `clone_project` is the handler function for cloning projects
+        result = await clone_project(user_id, project_id, request.remote_url)
+        return {"message": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
@@ -182,30 +192,6 @@ async def add_project_stage(user_id: str, project_id: str, request: StageRequest
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@router.post("/{user_id}/{project_id}/experiment/run")
-async def run_project_experiment(user_id: str, project_id: str, request: ExperimentRunRequest):
-    """
-    Runs a DVC experiment.
-    """
-    try:
-        # Assuming `run_experiment` is the handler function for executing DVC experiments
-        result = await run_experiment(user_id, project_id, request.experiment_name, request.command)
-        return {"message": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/{user_id}/{project_id}/define_pipeline")
-async def define_project_pipeline(user_id: str, project_id: str):
-    """
-    Defines a DVC pipeline for the project.
-    """
-    try:
-        # Assuming `define_pipeline` is the handler function for defining DVC pipelines
-        result = await define_pipeline(user_id, project_id)
-        return {"message": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
 @router.get("/{user_id}/{project_id}/run_pipeline")
 async def run_project_pipeline(user_id: str, project_id: str):
     """
@@ -213,8 +199,82 @@ async def run_project_pipeline(user_id: str, project_id: str):
     """
     try:
         # Assuming `run_pipeline` is the handler function for running DVC pipelines
-        result = await run_pipeline(user_id, project_id)
+        result = await repro(user_id, project_id)
         return {"message": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/metrics_show")
+async def get_metrics(user_id: str, project_id: str, request: MetricsShowRequest):
+    """
+    Gets the metrics for the project.
+    """
+    try:
+        # Assuming `get_metrics` is the handler function for getting metrics
+        result = await dvc_metrics_show(user_id, project_id, all_commits=request.all_commits,
+            json=request.json,
+            yaml=request.yaml,)
+        return {"metrics": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/metrics_diff")
+async def metrics_diff(user_id: str, project_id:str, request: MetricsDiffRequest):
+    """
+    Show the difference in metrics between two commits.
+    """
+    try:
+        result = await dvc_metrics_diff(
+            user_id, project_id,
+            a_rev=request.a_rev,
+            b_rev=request.b_rev,
+            all=request.all,
+            precision=request.precision,
+            json=request.json,
+            csv=request.csv,
+            md=request.md,
+        )
+        return {"message": "Metrics diff shown successfully", "output": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/{user_id}/{project_id}/plots_show")
+async def show_plots(user_id: str, project_id:str,request: PlotsShowRequest):
+    """
+    Show plots with options for output format and customization.
+    """
+    try:
+        result = await dvc_plots_show(
+            user_id, project_id,
+            targets=request.targets,
+            json=request.json,
+            html=request.html,
+            no_html=request.no_html,
+            templates_dir=request.templates_dir,
+            out=request.out,
+        )
+        return {"message": "Plots shown successfully", "output": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/plots_diff")
+async def diff_plots(user_id: str, project_id:str,request: PlotsDiffRequest):
+    """
+    Show differences in plots between two revisions.
+    """
+    try:
+        result = await dvc_plots_diff(
+            user_id, project_id,
+            targets=request.targets,
+            a_rev=request.a_rev,
+            b_rev=request.b_rev,
+            templates_dir=request.templates_dir,
+            json=request.json,
+            html=request.html,
+            no_html=request.no_html,
+            out=request.out,
+        )
+        return {"message": "Plots diff shown successfully", "output": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     

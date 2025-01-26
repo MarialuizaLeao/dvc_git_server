@@ -41,7 +41,7 @@ async def init_dvc(project_path: str):
     """
     Initialize DVC in the given project path.
     """
-    await run_command_async("dvc init --subdir", cwd=project_path)
+    await run_command_async("dvc init", cwd=project_path)
     
 async def init_git(project_path: str, project_id: str):
     """
@@ -62,30 +62,30 @@ async def create_project(user_id: str, project_id: str):
     # Ensure the project path exists and DVC is initialized
     if os.path.exists(project_path):
         if not await is_git_initialized(project_path):
-            await init_git(project_path)
+            await init_git(project_path,project_id)
         if not await is_dvc_initialized(project_path):
             await init_dvc(project_path)
     else:
         os.makedirs(project_path, exist_ok=True)
+        await init_git(project_path,project_id)
         await init_dvc(project_path)
 
     # Add the project directory to Git
     try:
-        user_root = os.path.join(REPO_ROOT, user_id)
 
         # Add the project to Git
-        await run_command_async(f"git add .", cwd=user_root)
+        await run_command_async(f"git add .", cwd=project_path)
 
         # Check for staged changes
-        stdout = await run_command_async("git diff --cached --name-only", cwd=user_root)
+        stdout = await run_command_async("git diff --cached --name-only", cwd=project_path)
         if not stdout.strip():
             raise Exception(f"No changes to commit for {user_id}/{project_id}")
 
         # Commit changes
-        await run_command_async(f'git commit -m "Initialized project {project_id}"', cwd=user_root)
+        await run_command_async(f'git commit -m "Initialized project {project_id}"', cwd=project_path)
 
         # Push changes to the remote repository
-        await run_command_async("git push", cwd=user_root)
+        await run_command_async("git push", cwd=project_path)
 
     except Exception as e:
         raise Exception(f"Error while creating project: {str(e)}")
@@ -133,6 +133,7 @@ async def get_url(user_id: str, project_id: str, url: str, dest: str = "."):
     # Add the file to git
     await run_command_async(f"git add {dest}.dvc data/.gitignore", cwd=project_path)
     await run_command_async(f"git commit -m 'added {dest}'", cwd=project_path)
+    await run_command_async(f"git push", cwd=project_path)
     
     
     return stdout.decode().strip()
@@ -164,6 +165,29 @@ async def track_files(user_id: str, project_id: str, files: list):
         return "Data tracked successfully."
     except Exception as e:
         raise Exception(f"Failed to track data: {str(e)}")
+
+async def clone_project(user_id: str, project_id: str, remote_url: str):
+    """
+    Clones a project from a remote repository.
+    """
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    try:
+        # Add the remote repository
+        await run_command_async(f"git remote add temp_remote {remote_url}", cwd=project_path)
+        
+        # Fetch the contents of the remote repository
+        await run_command_async("git fetch temp_remote", cwd=project_path)
+        
+        # Merge the contents into the current repository, favoring the remote changes in case of conflicts
+        merge_message = "Merged contents from remote repository"
+        await run_command_async(f"git merge temp_remote/master -X theirs --allow-unrelated-histories -m '{merge_message}'", cwd=project_path)
+        
+        # Remove the temporary remote
+        await run_command_async("git remote remove temp_remote", cwd=project_path)
+        
+        return "Repository contents extracted successfully."
+    except CalledProcessError as e:
+        raise Exception(f"Failed to clone project: {e.stderr or e.stdout}")
 
 async def set_remote(user_id: str, project_id: str, remote_url: str, remote_name: str):
     """
@@ -399,5 +423,146 @@ async def repro(
         raise Exception(f"Error running `dvc repro`: {stderr.decode().strip()}")
     
     await run_command_async("git add dvc.lock && git commit -m 'pipeline repro'", cwd=project_path)
+
+    return stdout.decode().strip()
+
+async def dvc_metrics_show(user_id: str, project_id:str, all_commits: bool = False, json: bool = False, yaml: bool = False):
+    """
+    Show metrics using `dvc metrics show`.
+
+    Args:
+        cwd (str): The directory to run the command in.
+        all_commits (bool, optional): Show metrics from all commits.
+        json (bool, optional): Output in JSON format.
+        yaml (bool, optional): Output in YAML format.
+
+    Returns:
+        str: The output of the `dvc metrics show` command.
+    """
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    command = "dvc metrics show"
+    if all_commits:
+        command += " --all-commits"
+    if json:
+        command += " --json"
+    if yaml:
+        command += " --yaml"
+
+    process = await asyncio.create_subprocess_shell(
+        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+
+    if process.returncode != 0:
+        raise Exception(f"`dvc metrics show` failed: {stderr.decode().strip()}")
+
+    return stdout.decode().strip()
+
+async def dvc_metrics_diff(
+    user_id: str, project_id:str,
+    a_rev: str = None,
+    b_rev: str = None,
+    all: bool = False,
+    precision: int = None,
+    json: bool = False,
+    csv: bool = False,
+    md: bool = False,
+):
+    """
+    Show the difference in metrics between two commits using `dvc metrics diff`.
+
+    Args:
+        cwd (str): The directory to run the command in.
+        a_rev (str, optional): The starting commit or revision.
+        b_rev (str, optional): The ending commit or revision.
+        all (bool, optional): Show all metrics, even unchanged ones.
+        precision (int, optional): Number of decimal places for metric values.
+        json (bool, optional): Output in JSON format.
+        csv (bool, optional): Output in CSV format.
+        md (bool, optional): Output in Markdown format.
+
+    Returns:
+        str: The output of the `dvc metrics diff` command.
+
+    Raises:
+        Exception: If the `dvc metrics diff` command fails.
+    """
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    command = "dvc metrics diff"
+
+    if a_rev:
+        command += f" {a_rev}"
+    if b_rev:
+        command += f" {b_rev}"
+    if all:
+        command += " --all"
+    if precision is not None:
+        command += f" --precision {precision}"
+    if json:
+        command += " --json"
+    if csv:
+        command += " --csv"
+    if md:
+        command += " --md"
+
+    process = await asyncio.create_subprocess_shell(
+        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+
+    if process.returncode != 0:
+        raise Exception(f"`dvc metrics diff` failed: {stderr.decode().strip()}")
+
+    return stdout.decode().strip()
+
+async def dvc_plots_show(
+    user_id: str, project_id:str,
+    targets: list = None,
+    json: bool = False,
+    html: bool = False,
+    no_html: bool = False,
+    templates_dir: str = None,
+    out: str = None,
+):
+    """
+    Show plots using `dvc plots show`.
+
+    Args:
+        cwd (str): The directory to run the command in.
+        targets (list, optional): List of plot files to include.
+        json (bool, optional): Output in JSON format.
+        html (bool, optional): Generate an HTML file and return its path.
+        no_html (bool, optional): Skip generating an HTML file.
+        templates_dir (str, optional): Directory containing custom templates.
+        out (str, optional): Directory or file path for saving plots.
+
+    Returns:
+        str: The output of the `dvc plots show` command.
+
+    Raises:
+        Exception: If the `dvc plots show` command fails.
+    """
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    command = "dvc plots show"
+    if targets:
+        command += " " + " ".join(targets)
+    if json:
+        command += " --json"
+    if html:
+        command += " --html"
+    if no_html:
+        command += " --no-html"
+    if templates_dir:
+        command += f" --templates-dir {templates_dir}"
+    if out:
+        command += f" --out {out}"
+
+    process = await asyncio.create_subprocess_shell(
+        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+
+    if process.returncode != 0:
+        raise Exception(f"`dvc plots show` failed: {stderr.decode().strip()}")
 
     return stdout.decode().strip()
