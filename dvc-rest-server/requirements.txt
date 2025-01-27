@@ -4,3 +4,10 @@ PyGithub
 pymongo
 python-multipart
 motor
+dvc
+pandas
+pyaml
+scikit-learn
+scipy
+matplotlib
+dvclive
