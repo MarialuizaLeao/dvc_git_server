@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.classes import *
 from bson.objectid import ObjectId
 from typing import List, Optional
-from app.init_db import users_collection, projects_collection
+from app.init_db import get_users_collection, get_projects_collection
 from pydantic import BaseModel
 from app.dvc_handler import (
     create_project as dvc_create_project,
@@ -25,55 +25,161 @@ from app.dvc_handler import (
     repro
 )
 from app.dvc_exp import *
+import traceback
+from datetime import datetime
 
 import os
 
 router = APIRouter()
 
-@router.get("/users/")
+@router.get("/users/", response_model=List[User])
 async def get_users():
-    users = []
-    async for user in users_collection.find():
-        user["_id"] = str(user["_id"])  # Convert ObjectId to string
-        users.append(user)
-    return users
-    
+    """
+    Get all users
+    """
+    try:
+        users_collection = await get_users_collection()
+        users = await users_collection.find().to_list(None)
+        return [User.from_mongo(user) for user in users]
+    except Exception as e:
+        print("Error in get_users:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/users/{user_id}", response_model=User)
+async def get_user(user_id: str):
+    """
+    Get a specific user by ID
+    """
+    try:
+        users_collection = await get_users_collection()
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return User.from_mongo(user)
+    except Exception as e:
+        print("Error in get_user:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/users/", response_model=User)
+async def create_user(user: UserCreate):
+    """
+    Create a new user
+    """
+    try:
+        users_collection = await get_users_collection()
+        user_dict = user.dict()
+        result = await users_collection.insert_one(user_dict)
+        created_user = await users_collection.find_one({"_id": result.inserted_id})
+        return User.from_mongo(created_user)
+    except Exception as e:
+        print("Error in create_user:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/users/{user_id}", response_model=User)
+async def update_user(user_id: str, user: User):
+    """
+    Update a user
+    """
+    try:
+        users_collection = await get_users_collection()
+        result = await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": user.dict(exclude={"id"})}
+        )
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        return User(**updated_user)
+    except Exception as e:
+        print("Error in update_user:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str):
+    """
+    Delete a user
+    """
+    try:
+        users_collection = await get_users_collection()
+        result = await users_collection.delete_one({"_id": ObjectId(user_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"message": "User deleted successfully"}
+    except Exception as e:
+        print("Error in delete_user:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/{user_id}/project/create")
 async def create_new_project(user_id: str, request: ProjectRequest):
     """
     Creates a new project directory and initializes Git/DVC.
     """
-    
-    # Check if project name is unique for the user
-    project = await projects_collection.find_one({"project_name": request.project_name, "user_id": user_id})
-    if project:
-        raise HTTPException(status_code=400, detail="Project name already exists for the user")
-    
     try:
+        # Check if project name is unique for the user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "project_name": request.project_name,
+            "user_id": user_id
+        })
+        if project:
+            raise HTTPException(status_code=400, detail="Project name already exists for this user")
+        
+        # Prepare project data
+        project_data = {
+            "user_id": user_id,
+            "username": request.username,
+            "project_name": request.project_name,
+            "description": request.description,
+            "project_type": request.project_type,
+            "framework": request.framework,
+            "python_version": request.python_version,
+            "dependencies": request.dependencies,
+            "models_count": 0,
+            "experiments_count": 0,
+            "status": "active",
+            "created_at": datetime.now().isoformat()
+        }
+        
         # Save the project details to the database
-        project_data = request.dict()
-        result = await projects_collection.insert_one(project_data)
+        result = await project_collection.insert_one(project_data)
+        project_id = str(result.inserted_id)
 
         # Add the project to the user's projects array
+        users_collection = await get_users_collection()
         await users_collection.update_one(
-            {"_id": ObjectId(user_id)}, {"$push": {"projects": str(result.inserted_id)}}
+            {"_id": ObjectId(user_id)},
+            {"$push": {"projects": project_id}}
         )
         
         # Create the project directory and initialize DVC
-        project_path = await dvc_create_project(user_id, str(result.inserted_id))
+        try:
+            project_path = await dvc_create_project(user_id, project_id)
+            print(f"Created project directory at: {project_path}")
+        except Exception as e:
+            print(f"Error creating project directory: {e}")
+            # Rollback database changes
+            await project_collection.delete_one({"_id": result.inserted_id})
+            await users_collection.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$pull": {"projects": project_id}}
+            )
+            raise HTTPException(status_code=500, detail=f"Failed to create project directory: {str(e)}")
             
         return {
-            "message": f"Project {request.project_name} for user {request.username} created successfully.",
-            "id": str(result.inserted_id)
+            "message": f"Project {request.project_name} created successfully",
+            "id": project_id
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        # Rollback the project creation
-        await projects_collection.delete_one({"_id": ObjectId(user_id)})
-        # Remove the project from the user's projects array
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)}, {"$pull": {"projects": str(result.inserted_id)}}
-        )
-        raise HTTPException(status_code=500, detail=str(e))
+        print("Error in create_new_project:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to create project: {str(e)}")
 
 @router.post("/{user_id}/{project_id}/get_url")
 async def get_url(user_id: str, project_id: str, request: GetUrlRequest):
@@ -205,77 +311,71 @@ async def run_project_pipeline(user_id: str, project_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{user_id}/{project_id}/metrics_show")
-async def get_metrics(user_id: str, project_id: str, request: MetricsShowRequest):
+async def show_metrics(user_id: str, project_id: str, request: MetricsShowRequest):
     """
-    Gets the metrics for the project.
+    Show metrics for a project.
     """
     try:
-        # Assuming `get_metrics` is the handler function for getting metrics
-        result = await dvc_metrics_show(user_id, project_id, all_commits=request.all_commits,
-            json=request.json,
-            yaml=request.yaml,)
-        return {"metrics": result}
+        result = await dvc_metrics_show(user_id, project_id, request.all_commits, request.output_json, request.yaml)
+        return result
     except Exception as e:
+        print("Error in show_metrics:", str(e))
+        print("Traceback:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{user_id}/{project_id}/metrics_diff")
-async def metrics_diff(user_id: str, project_id:str, request: MetricsDiffRequest):
+async def metrics_diff(user_id: str, project_id: str, request: MetricsDiffRequest):
     """
-    Show the difference in metrics between two commits.
+    Show metrics diff for a project.
     """
     try:
         result = await dvc_metrics_diff(
             user_id, project_id,
-            a_rev=request.a_rev,
-            b_rev=request.b_rev,
-            all=request.all,
-            precision=request.precision,
-            json=request.json,
-            csv=request.csv,
-            md=request.md,
+            request.a_rev, request.b_rev,
+            request.all, request.precision,
+            request.output_json, request.csv, request.md
         )
-        return {"message": "Metrics diff shown successfully", "output": result}
+        return result
     except Exception as e:
+        print("Error in metrics_diff:", str(e))
+        print("Traceback:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/{user_id}/{project_id}/plots_show")
-async def show_plots(user_id: str, project_id:str,request: PlotsShowRequest):
+async def show_plots(user_id: str, project_id: str, request: PlotsShowRequest):
     """
-    Show plots with options for output format and customization.
+    Show plots for a project.
     """
     try:
         result = await dvc_plots_show(
             user_id, project_id,
-            targets=request.targets,
-            json=request.json,
-            html=request.html,
-            no_html=request.no_html,
-            templates_dir=request.templates_dir,
-            out=request.out,
+            request.targets, request.output_json,
+            request.html, request.no_html,
+            request.templates_dir, request.out
         )
-        return {"message": "Plots shown successfully", "output": result}
+        return result
     except Exception as e:
+        print("Error in show_plots:", str(e))
+        print("Traceback:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{user_id}/{project_id}/plots_diff")
-async def diff_plots(user_id: str, project_id:str,request: PlotsDiffRequest):
+async def plots_diff(user_id: str, project_id: str, request: PlotsDiffRequest):
     """
-    Show differences in plots between two revisions.
+    Show plots diff for a project.
     """
     try:
         result = await dvc_plots_diff(
             user_id, project_id,
-            targets=request.targets,
-            a_rev=request.a_rev,
-            b_rev=request.b_rev,
-            templates_dir=request.templates_dir,
-            json=request.json,
-            html=request.html,
-            no_html=request.no_html,
-            out=request.out,
+            request.targets, request.a_rev,
+            request.b_rev, request.templates_dir,
+            request.output_json, request.html,
+            request.no_html, request.out
         )
-        return {"message": "Plots diff shown successfully", "output": result}
+        return result
     except Exception as e:
+        print("Error in plots_diff:", str(e))
+        print("Traceback:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.post("/{user_id}/{project_id}/exp/run")
@@ -411,3 +511,69 @@ async def save_experiment(user_id: str, project_id:str, request: SaveExperimentR
         return {"message": "Experiment saved successfully", "output": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/project/{project_id}")
+async def get_project(user_id: str, project_id: str):
+    """
+    Get a single project by ID.
+    """
+    try:
+        # Convert string ID to ObjectId
+        try:
+            project_id_obj = ObjectId(project_id)
+        except Exception as e:
+            print(f"Invalid project ID format: {project_id}")
+            raise HTTPException(status_code=400, detail=f"Invalid project ID format: {project_id}")
+        
+        # Find the project with matching user_id
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": project_id_obj,
+            "user_id": user_id
+        })
+        
+        if not project:
+            print(f"Project not found: {project_id} for user {user_id}")
+            raise HTTPException(status_code=404, detail="Project not found")
+            
+        return project
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_project:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get project: {str(e)}")
+
+@router.get("/{user_id}/projects")
+async def get_user_projects(user_id: str):
+    """
+    Get all projects for a user.
+    """
+    try:
+        # Convert string ID to ObjectId
+        try:
+            user_id_obj = ObjectId(user_id)
+        except Exception as e:
+            print(f"Invalid user ID format: {user_id}")
+            raise HTTPException(status_code=400, detail=f"Invalid user ID format: {user_id}")
+        
+        # Find the user
+        users_collection = await get_users_collection()
+        user = await users_collection.find_one({"_id": user_id_obj})
+        if not user:
+            print(f"User not found: {user_id}")
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        # Get all projects for the user
+        project_collection = await get_projects_collection()
+        projects = await project_collection.find({
+            "user_id": user_id
+        }).to_list(None)
+        
+        return projects
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_user_projects:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get user projects: {str(e)}")

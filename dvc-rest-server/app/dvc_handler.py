@@ -525,27 +525,13 @@ async def dvc_plots_show(
     out: str = None,
 ):
     """
-    Show plots using `dvc plots show`.
-
-    Args:
-        cwd (str): The directory to run the command in.
-        targets (list, optional): List of plot files to include.
-        json (bool, optional): Output in JSON format.
-        html (bool, optional): Generate an HTML file and return its path.
-        no_html (bool, optional): Skip generating an HTML file.
-        templates_dir (str, optional): Directory containing custom templates.
-        out (str, optional): Directory or file path for saving plots.
-
-    Returns:
-        str: The output of the `dvc plots show` command.
-
-    Raises:
-        Exception: If the `dvc plots show` command fails.
+    Show plots with options for output format and customization.
     """
     project_path = os.path.join(REPO_ROOT, user_id, project_id)
     command = "dvc plots show"
+
     if targets:
-        command += " " + " ".join(targets)
+        command += f" {' '.join(targets)}"
     if json:
         command += " --json"
     if html:
@@ -557,12 +543,48 @@ async def dvc_plots_show(
     if out:
         command += f" --out {out}"
 
-    process = await asyncio.create_subprocess_shell(
-        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await process.communicate()
+    try:
+        result = await run_command_async(command, cwd=project_path)
+        return result
+    except Exception as e:
+        raise Exception(f"Failed to show plots: {str(e)}")
 
-    if process.returncode != 0:
-        raise Exception(f"`dvc plots show` failed: {stderr.decode().strip()}")
+async def dvc_plots_diff(
+    user_id: str, project_id:str,
+    targets: list = None,
+    a_rev: str = None,
+    b_rev: str = None,
+    templates_dir: str = None,
+    json: bool = False,
+    html: bool = False,
+    no_html: bool = False,
+    out: str = None,
+):
+    """
+    Show differences in plots between two revisions.
+    """
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    command = "dvc plots diff"
 
-    return stdout.decode().strip()
+    if targets:
+        command += f" {' '.join(targets)}"
+    if a_rev:
+        command += f" {a_rev}"
+    if b_rev:
+        command += f" {b_rev}"
+    if templates_dir:
+        command += f" --templates-dir {templates_dir}"
+    if json:
+        command += " --json"
+    if html:
+        command += " --html"
+    if no_html:
+        command += " --no-html"
+    if out:
+        command += f" --out {out}"
+
+    try:
+        result = await run_command_async(command, cwd=project_path)
+        return result
+    except Exception as e:
+        raise Exception(f"Failed to show plots diff: {str(e)}")
