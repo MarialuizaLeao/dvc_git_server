@@ -2,6 +2,7 @@ data
 dvc-rest-server/app/__pycache__
 dvc-rest-server/venv
 dvc-rest-server/__pycache__
+dvc-rest-server/.env
 
 # Logs
 front-end/logs

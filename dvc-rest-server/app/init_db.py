@@ -6,8 +6,10 @@ import os
 
 __all__ = ['init_db', 'close_db', 'get_database', 'get_users_collection', 'get_projects_collection']
 
-# MongoDB connection string
-MONGODB_URL = "mongodb+srv://marialuiza1598:uXCOdu5scJ6pLcgx@poc.bq6sk.mongodb.net/dvc_server?retryWrites=true&w=majority&appName=poc"
+# MongoDB connection string from environment variable
+MONGODB_URL = os.getenv('MONGODB_URL')
+if not MONGODB_URL:
+    raise ValueError("MONGODB_URL environment variable is not set. Please set it before running the application.")
 
 # Global variables for database and collections
 client = None
