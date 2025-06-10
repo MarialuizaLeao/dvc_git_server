@@ -1,13 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { experimentsApi } from '../services/api';
 import type { CreateExperimentData } from '../services/api';
+import type { AxiosResponse } from 'axios';
 
 export const useExperiments = (projectId: string) => {
     const queryClient = useQueryClient();
 
     const experiments = useQuery({
         queryKey: ['experiments', projectId],
-        queryFn: () => experimentsApi.list(projectId).then((res) => res.data),
+        queryFn: () => experimentsApi.list(projectId).then((res: AxiosResponse) => res.data),
     });
 
     const createExperiment = useMutation({
@@ -34,7 +35,7 @@ export const useExperiments = (projectId: string) => {
     const getMetrics = (experimentId: string) =>
         useQuery({
             queryKey: ['metrics', experimentId],
-            queryFn: () => experimentsApi.getMetrics(experimentId).then((res) => res.data),
+            queryFn: () => experimentsApi.getMetrics(experimentId).then((res: AxiosResponse) => res.data),
             enabled: !!experimentId,
         });
 

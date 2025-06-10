@@ -1,0 +1,41 @@
+import { Link } from 'react-router-dom';
+
+const Home = () => {
+    return (
+        <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col items-center mb-12">
+                <img src="/flautim-logo.png" alt="Flautim" className="h-16 mb-8" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <Link
+                    to="/projects"
+                    className="p-6 bg-white rounded-lg border border-gray-200 hover:border-blue-500 transition-colors"
+                >
+                    <h2 className="text-xl font-semibold mb-2">Projects</h2>
+                    <p className="text-gray-600">
+                        View and manage your machine learning projects
+                    </p>
+                </Link>
+
+                <div className="p-6 bg-white rounded-lg border border-gray-200">
+                    <h2 className="text-xl font-semibold mb-2">Recent Activity</h2>
+                    <p className="text-gray-600">
+                        No recent activity
+                    </p>
+                </div>
+
+                <div className="p-6 bg-white rounded-lg border border-gray-200">
+                    <h2 className="text-xl font-semibold mb-2">Quick Stats</h2>
+                    <div className="space-y-2">
+                        <p className="text-gray-600">Total Projects: 0</p>
+                        <p className="text-gray-600">Active Experiments: 0</p>
+                        <p className="text-gray-600">Deployed Models: 0</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default Home; 
