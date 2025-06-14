@@ -7,7 +7,6 @@ import Pipeline from './pages/Pipeline';
 import Experiments from './pages/Experiments';
 import Home from './pages/Home';
 import ProjectPage from './pages/ProjectPage';
-import CreateProject from './pages/CreateProject';
 import './App.css';
 
 // Create a client
@@ -22,7 +21,6 @@ const App = () => {
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<Home />} />
             <Route path="/projects" element={<Projects />} />
-            <Route path="/create-project" element={<CreateProject />} />
             <Route path="/project/:id/data" element={<Project />} />
             <Route path="/project/:id/pipeline" element={<Pipeline />} />
             <Route path="/project/:id/models" element={<div>Models Page</div>} />

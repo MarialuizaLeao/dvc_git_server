@@ -46,12 +46,8 @@ export const projectApi = {
     },
 
     getProjects: async (userId: string) => {
-        const users = await projectApi.getUsers();
-        const user = users.find(u => u._id === userId);
-        if (!user) {
-            throw new Error('User not found');
-        }
-        return user.projects;
+        const response = await api.get<{ projects: Project[] }>(`/${userId}/projects`);
+        return response.data.projects;
     },
 
     getProject: async (userId: string, projectId: string) => {

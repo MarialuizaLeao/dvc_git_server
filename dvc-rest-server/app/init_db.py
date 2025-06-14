@@ -3,6 +3,10 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 import certifi
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 __all__ = ['init_db', 'close_db', 'get_database', 'get_users_collection', 'get_projects_collection']
 
@@ -36,6 +40,7 @@ async def get_users_collection():
 async def get_projects_collection():
     """Get projects collection"""
     await init_if_needed()
+    global projects_collection
     return projects_collection
 
 async def init_db():
@@ -62,6 +67,7 @@ async def init_db():
         db = client.get_database("dvc_server")
         users_collection = db.get_collection("users")
         projects_collection = db.get_collection("projects")
+        print("Collections initialized successfully")
         
         # Initialize collections if they don't exist
         collections = await db.list_collection_names()

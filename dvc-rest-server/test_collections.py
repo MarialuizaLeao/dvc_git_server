@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 from bson.objectid import ObjectId
 from pymongo.server_api import ServerApi
 
+# Load environment variables from .env file
+load_dotenv()
+
 async def test_collections():
     # Load environment variables
     load_dotenv()

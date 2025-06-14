@@ -62,19 +62,19 @@ const CreateProjectModal = ({ isOpen, onClose, onSubmit, error, isLoading = fals
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center overflow-y-auto py-10">
             <div className="bg-white rounded-lg p-6 w-[600px] max-h-[90vh] overflow-y-auto">
-                <h2 className="text-xl font-semibold mb-4">Create New Project</h2>
+                <h2 className="text-xl font-semibold mb-4 text-left">Create New Project</h2>
                 {error && (
                     <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
                         <p className="text-sm text-red-600">{error}</p>
                     </div>
                 )}
-                <form onSubmit={handleSubmit} id="create-project-form" name="create-project-form" className="space-y-6">
+                <form onSubmit={handleSubmit} id="create-project-form" name="create-project-form" className="space-y-6 text-left">
                     {/* Basic Information */}
                     <div>
-                        <h3 className="text-sm font-medium text-gray-700 mb-4">Basic Information</h3>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-4 text-left">Basic Information</h3>
                         <div className="space-y-4">
                             <div>
-                                <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">
+                                <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1 text-left">
                                     Project Name*
                                 </label>
                                 <input
@@ -91,7 +91,7 @@ const CreateProjectModal = ({ isOpen, onClose, onSubmit, error, isLoading = fals
                                 />
                             </div>
                             <div>
-                                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1 text-left">
                                     Description
                                 </label>
                                 <textarea
@@ -110,10 +110,10 @@ const CreateProjectModal = ({ isOpen, onClose, onSubmit, error, isLoading = fals
 
                     {/* Project Configuration */}
                     <div>
-                        <h3 className="text-sm font-medium text-gray-700 mb-4">Project Configuration</h3>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-4 text-left">Project Configuration</h3>
                         <div className="space-y-4">
                             <div>
-                                <label htmlFor="project-type" className="block text-sm font-medium text-gray-700 mb-1">
+                                <label htmlFor="project-type" className="block text-sm font-medium text-gray-700 mb-1 text-left">
                                     Project Type
                                 </label>
                                 <select
@@ -132,7 +132,7 @@ const CreateProjectModal = ({ isOpen, onClose, onSubmit, error, isLoading = fals
                                 </select>
                             </div>
                             <div>
-                                <label htmlFor="framework" className="block text-sm font-medium text-gray-700 mb-1">
+                                <label htmlFor="framework" className="block text-sm font-medium text-gray-700 mb-1 text-left">
                                     Framework
                                 </label>
                                 <select
@@ -149,7 +149,7 @@ const CreateProjectModal = ({ isOpen, onClose, onSubmit, error, isLoading = fals
                                 </select>
                             </div>
                             <div>
-                                <label htmlFor="python-version" className="block text-sm font-medium text-gray-700 mb-1">
+                                <label htmlFor="python-version" className="block text-sm font-medium text-gray-700 mb-1 text-left">
                                     Python Version
                                 </label>
                                 <select
@@ -169,7 +169,7 @@ const CreateProjectModal = ({ isOpen, onClose, onSubmit, error, isLoading = fals
 
                     {/* Dependencies */}
                     <div>
-                        <h3 className="text-sm font-medium text-gray-700 mb-4">Dependencies</h3>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-4 text-left">Dependencies</h3>
                         <div className="space-y-4">
                             <div className="flex space-x-2">
                                 <input

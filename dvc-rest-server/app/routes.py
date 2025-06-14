@@ -535,8 +535,11 @@ async def get_project(user_id: str, project_id: str):
         if not project:
             print(f"Project not found: {project_id} for user {user_id}")
             raise HTTPException(status_code=404, detail="Project not found")
-            
-        return project
+        
+        # Convert ObjectId to string for JSON serialization
+        project_dict = dict(project)
+        project_dict["_id"] = str(project_dict["_id"])
+        return project_dict
     except HTTPException:
         raise
     except Exception as e:
@@ -550,18 +553,10 @@ async def get_user_projects(user_id: str):
     Get all projects for a user.
     """
     try:
-        # Convert string ID to ObjectId
-        try:
-            user_id_obj = ObjectId(user_id)
-        except Exception as e:
-            print(f"Invalid user ID format: {user_id}")
-            raise HTTPException(status_code=400, detail=f"Invalid user ID format: {user_id}")
-        
         # Find the user
         users_collection = await get_users_collection()
-        user = await users_collection.find_one({"_id": user_id_obj})
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
-            print(f"User not found: {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
             
         # Get all projects for the user
@@ -570,9 +565,16 @@ async def get_user_projects(user_id: str):
             "user_id": user_id
         }).to_list(None)
         
-        return projects
-    except HTTPException:
-        raise
+        # Convert ObjectId to string for JSON serialization
+        serialized_projects = []
+        for project in projects:
+            project_dict = dict(project)
+            project_dict["_id"] = str(project_dict["_id"])
+            serialized_projects.append(project_dict)
+            
+        return {"projects": serialized_projects}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid user ID format: {str(e)}")
     except Exception as e:
         print("Error in get_user_projects:", str(e))
         print("Traceback:", traceback.format_exc())
