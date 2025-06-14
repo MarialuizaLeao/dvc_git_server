@@ -452,3 +452,77 @@ class CodeFileSearchRequest(BaseModel):
     path_pattern: Optional[str] = None
     limit: Optional[int] = 50
     offset: Optional[int] = 0
+
+class ParameterValue(BaseModel):
+    """Represents a single parameter value with metadata."""
+    name: str
+    value: Any
+    type: str = "string"  # string, number, boolean, array, object
+    description: Optional[str] = None
+    default_value: Optional[Any] = None
+    required: bool = False
+    validation: Optional[Dict[str, Any]] = None  # min, max, pattern, etc.
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class ParameterGroup(BaseModel):
+    """Represents a group of related parameters."""
+    name: str
+    description: Optional[str] = None
+    parameters: List[ParameterValue]
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class ParameterSet(BaseModel):
+    """Represents a complete set of parameters for a project."""
+    name: str
+    description: Optional[str] = None
+    groups: List[ParameterGroup]
+    is_default: bool = False
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class ParameterSetCreate(BaseModel):
+    """Request model for creating a parameter set."""
+    name: str
+    description: Optional[str] = None
+    groups: List[ParameterGroup]
+    is_default: bool = False
+
+class ParameterSetUpdate(BaseModel):
+    """Request model for updating a parameter set."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    groups: Optional[List[ParameterGroup]] = None
+    is_default: Optional[bool] = None
+
+class ParameterValueUpdate(BaseModel):
+    """Request model for updating a single parameter value."""
+    value: Any
+    description: Optional[str] = None
+
+class ParameterImportRequest(BaseModel):
+    """Request model for importing parameters from external sources."""
+    source_type: str  # yaml_file, json_file, url, etc.
+    source_path: str
+    parameter_set_name: str
+    description: Optional[str] = None
+    overwrite_existing: bool = False
+
+class ParameterExportRequest(BaseModel):
+    """Request model for exporting parameters to external formats."""
+    format: str  # yaml, json, env, etc.
+    include_metadata: bool = True
+    include_descriptions: bool = True
+
+class ParameterValidationRequest(BaseModel):
+    """Request model for validating parameter values."""
+    parameter_set_id: str
+    validate_all: bool = True
+    parameter_names: Optional[List[str]] = None
+
+class ParameterDiffRequest(BaseModel):
+    """Request model for comparing parameter sets."""
+    base_set_id: str
+    compare_set_id: str
+    show_differences_only: bool = True
