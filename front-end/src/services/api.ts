@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { User, Project, CreateProjectRequest } from '../types/api';
+import type { User, Project, CreateProjectRequest, CreateExperimentData, Pipeline, CreatePipelineRequest, UpdatePipelineRequest, PipelineExecutionRequest, PipelineExecutionResponse, PipelineRecoveryResponse } from '../types/api';
 
 // Create axios instance
 const api = axios.create({
@@ -185,6 +185,52 @@ export const projectApi = {
         experiment_id?: string;
     }) => {
         const response = await api.post(`/${userId}/${projectId}/exp/pull`, params);
+        return response.data;
+    },
+
+    // Pipeline operations
+    getPipeline: async (userId: string, projectId: string) => {
+        const response = await api.get<Pipeline>(
+            `/${userId}/${projectId}/pipeline`
+        );
+        return response.data;
+    },
+
+    createPipeline: async (userId: string, projectId: string, data: CreatePipelineRequest) => {
+        const response = await api.post<{ message: string; id: string }>(
+            `/${userId}/${projectId}/pipeline`,
+            data
+        );
+        return response.data;
+    },
+
+    updatePipeline: async (userId: string, projectId: string, data: UpdatePipelineRequest) => {
+        const response = await api.put<{ message: string }>(
+            `/${userId}/${projectId}/pipeline`,
+            data
+        );
+        return response.data;
+    },
+
+    deletePipeline: async (userId: string, projectId: string) => {
+        const response = await api.delete<{ message: string }>(
+            `/${userId}/${projectId}/pipeline`
+        );
+        return response.data;
+    },
+
+    executePipeline: async (userId: string, projectId: string, data: PipelineExecutionRequest) => {
+        const response = await api.post<PipelineExecutionResponse>(
+            `/${userId}/${projectId}/pipeline/execute`,
+            data
+        );
+        return response.data;
+    },
+
+    recoverPipeline: async (userId: string, projectId: string) => {
+        const response = await api.post<PipelineRecoveryResponse>(
+            `/${userId}/${projectId}/pipeline/recover`
+        );
         return response.data;
     }
 };

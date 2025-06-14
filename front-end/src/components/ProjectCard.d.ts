@@ -3,6 +3,8 @@ interface ProjectCardProps {
     projectId: string;
 }
 
-declare function ProjectCard(props: ProjectCardProps): JSX.Element;
+import { ReactElement } from 'react';
 
-export default ProjectCard; 
+declare function ProjectCard(props: ProjectCardProps): ReactElement;
+
+export default ProjectCard;

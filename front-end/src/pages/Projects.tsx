@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useProjects } from '../hooks/useProjects';
 import { CURRENT_USER } from '../constants/user';
 import CreateProjectModal from '../components/CreateProjectModal';
@@ -9,17 +10,19 @@ type ProjectFormData = Omit<CreateProjectRequest, 'username'>;
 
 export default function Projects() {
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const navigate = useNavigate();
     const { getProjects, createProject } = useProjects(CURRENT_USER.id);
     const { data: projects, isLoading, error } = getProjects();
     const createProjectMutation = createProject();
 
     const handleCreateProject = async (projectData: ProjectFormData) => {
         try {
-            await createProjectMutation.mutateAsync({
+            const newProject = await createProjectMutation.mutateAsync({
                 username: CURRENT_USER.id,
                 ...projectData
             });
             setIsModalOpen(false);
+            navigate(`/project/${newProject.id}`);
         } catch (error) {
             console.error('Failed to create project:', error);
         }

@@ -60,7 +60,15 @@ const CreateProjectModal = ({ isOpen, onClose, onSubmit, error, isLoading = fals
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center overflow-y-auto py-10">
+        <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center overflow-y-auto py-10"
+            onClick={(e) => {
+                // Only close if clicking the overlay (not the modal content)
+                if (e.target === e.currentTarget) {
+                    onClose();
+                }
+            }}
+        >
             <div className="bg-white rounded-lg p-6 w-[600px] max-h-[90vh] overflow-y-auto">
                 <h2 className="text-xl font-semibold mb-4 text-left">Create New Project</h2>
                 {error && (

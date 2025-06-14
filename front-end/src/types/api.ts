@@ -85,6 +85,72 @@ export interface CreateExperimentData {
     message?: string;
 }
 
+// Pipeline types
+export interface PipelineStage {
+    name: string;
+    deps: string[];
+    outs: string[];
+    params?: string[];
+    metrics?: string[];
+    plots?: string[];
+    command: string;
+    description?: string;
+}
+
+export interface Pipeline {
+    _id: string;
+    user_id: string;
+    project_id: string;
+    name: string;
+    description?: string;
+    stages: PipelineStage[];
+    version: string;
+    created_at?: string;
+    updated_at?: string;
+    is_active: boolean;
+    last_execution?: {
+        execution_id: string;
+        status: string;
+        start_time: string;
+        end_time?: string;
+        output?: string;
+        error?: string;
+    };
+}
+
+export interface CreatePipelineRequest {
+    name: string;
+    description?: string;
+    stages: PipelineStage[];
+}
+
+export interface UpdatePipelineRequest {
+    name?: string;
+    description?: string;
+    stages?: PipelineStage[];
+    is_active?: boolean;
+}
+
+export interface PipelineExecutionRequest {
+    force?: boolean;
+    dry_run?: boolean;
+    targets?: string[];
+}
+
+export interface PipelineExecutionResponse {
+    execution_id: string;
+    status: string;
+    start_time: string;
+    end_time: string;
+    output?: string;
+    error?: string;
+}
+
+export interface PipelineRecoveryResponse {
+    message: string;
+    stages_applied: number;
+}
+
 // API Response types
 export interface ApiResponse<T> {
     data: T;

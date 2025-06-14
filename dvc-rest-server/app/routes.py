@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.classes import *
 from bson.objectid import ObjectId
 from typing import List, Optional
-from app.init_db import get_users_collection, get_projects_collection
+from app.init_db import get_users_collection, get_projects_collection, get_pipeline_configs_collection
 from pydantic import BaseModel
 from app.dvc_handler import (
     create_project as dvc_create_project,
@@ -579,3 +579,333 @@ async def get_user_projects(user_id: str):
         print("Error in get_user_projects:", str(e))
         print("Traceback:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to get user projects: {str(e)}")
+
+# Pipeline Configuration Endpoints
+
+@router.post("/{user_id}/{project_id}/pipeline/config")
+async def create_pipeline_config(user_id: str, project_id: str, request: PipelineConfigCreate):
+    """
+    Create a new pipeline configuration for a project.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Prepare pipeline config data
+        pipeline_config_data = {
+            "user_id": user_id,
+            "project_id": project_id,
+            "name": request.name,
+            "description": request.description,
+            "stages": [stage.dict() for stage in request.stages],
+            "version": "1.0",
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "is_active": True
+        }
+        
+        # Save to database
+        pipeline_configs_collection = await get_pipeline_configs_collection()
+        result = await pipeline_configs_collection.insert_one(pipeline_config_data)
+        
+        return {
+            "message": f"Pipeline configuration '{request.name}' created successfully",
+            "id": str(result.inserted_id)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in create_pipeline_config:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to create pipeline configuration: {str(e)}")
+
+@router.get("/{user_id}/{project_id}/pipeline/configs")
+async def get_pipeline_configs(user_id: str, project_id: str):
+    """
+    Get all pipeline configurations for a project.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get pipeline configurations
+        pipeline_configs_collection = await get_pipeline_configs_collection()
+        configs = await pipeline_configs_collection.find({
+            "user_id": user_id,
+            "project_id": project_id
+        }).to_list(None)
+        
+        # Convert ObjectId to string for JSON serialization
+        serialized_configs = []
+        for config in configs:
+            config_dict = dict(config)
+            config_dict["_id"] = str(config_dict["_id"])
+            serialized_configs.append(config_dict)
+            
+        return {"pipeline_configs": serialized_configs}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_pipeline_configs:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get pipeline configurations: {str(e)}")
+
+@router.get("/{user_id}/{project_id}/pipeline/config/{config_id}")
+async def get_pipeline_config(user_id: str, project_id: str, config_id: str):
+    """
+    Get a specific pipeline configuration by ID.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get pipeline configuration
+        pipeline_configs_collection = await get_pipeline_configs_collection()
+        config = await pipeline_configs_collection.find_one({
+            "_id": ObjectId(config_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not config:
+            raise HTTPException(status_code=404, detail="Pipeline configuration not found")
+        
+        # Convert ObjectId to string for JSON serialization
+        config_dict = dict(config)
+        config_dict["_id"] = str(config_dict["_id"])
+        
+        return config_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_pipeline_config:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get pipeline configuration: {str(e)}")
+
+@router.put("/{user_id}/{project_id}/pipeline/config/{config_id}")
+async def update_pipeline_config(user_id: str, project_id: str, config_id: str, request: PipelineConfigUpdate):
+    """
+    Update a pipeline configuration.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Prepare update data
+        update_data = {"updated_at": datetime.now().isoformat()}
+        if request.name is not None:
+            update_data["name"] = request.name
+        if request.description is not None:
+            update_data["description"] = request.description
+        if request.stages is not None:
+            update_data["stages"] = [stage.dict() for stage in request.stages]
+        if request.is_active is not None:
+            update_data["is_active"] = request.is_active
+        
+        # Update pipeline configuration
+        pipeline_configs_collection = await get_pipeline_configs_collection()
+        result = await pipeline_configs_collection.update_one(
+            {
+                "_id": ObjectId(config_id),
+                "user_id": user_id,
+                "project_id": project_id
+            },
+            {"$set": update_data}
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Pipeline configuration not found")
+        
+        return {"message": "Pipeline configuration updated successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in update_pipeline_config:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to update pipeline configuration: {str(e)}")
+
+@router.delete("/{user_id}/{project_id}/pipeline/config/{config_id}")
+async def delete_pipeline_config(user_id: str, project_id: str, config_id: str):
+    """
+    Delete a pipeline configuration.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Delete pipeline configuration
+        pipeline_configs_collection = await get_pipeline_configs_collection()
+        result = await pipeline_configs_collection.delete_one({
+            "_id": ObjectId(config_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Pipeline configuration not found")
+        
+        return {"message": "Pipeline configuration deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in delete_pipeline_config:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to delete pipeline configuration: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/pipeline/execute")
+async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecutionRequest):
+    """
+    Execute a pipeline configuration.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # If config_id is provided, verify it exists
+        if request.pipeline_config_id:
+            pipeline_configs_collection = await get_pipeline_configs_collection()
+            config = await pipeline_configs_collection.find_one({
+                "_id": ObjectId(request.pipeline_config_id),
+                "user_id": user_id,
+                "project_id": project_id
+            })
+            if not config:
+                raise HTTPException(status_code=404, detail="Pipeline configuration not found")
+        
+        # Execute the pipeline using existing DVC functionality
+        execution_id = f"exec_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        start_time = datetime.now().isoformat()
+        
+        try:
+            # Use the existing repro function to execute the pipeline
+            result = await repro(
+                user_id, 
+                project_id, 
+                force=request.force,
+                dry=request.dry_run,
+                targets=request.targets
+            )
+            
+            end_time = datetime.now().isoformat()
+            
+            return {
+                "execution_id": execution_id,
+                "status": "completed",
+                "start_time": start_time,
+                "end_time": end_time,
+                "output": result,
+                "error": None
+            }
+        except Exception as e:
+            end_time = datetime.now().isoformat()
+            return {
+                "execution_id": execution_id,
+                "status": "failed",
+                "start_time": start_time,
+                "end_time": end_time,
+                "output": None,
+                "error": str(e)
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in execute_pipeline:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to execute pipeline: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/pipeline/recover")
+async def recover_pipeline(user_id: str, project_id: str, config_id: str):
+    """
+    Recover a pipeline by applying a saved configuration.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get pipeline configuration
+        pipeline_configs_collection = await get_pipeline_configs_collection()
+        config = await pipeline_configs_collection.find_one({
+            "_id": ObjectId(config_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not config:
+            raise HTTPException(status_code=404, detail="Pipeline configuration not found")
+        
+        # Apply the pipeline configuration by creating DVC stages
+        try:
+            # Import the add_stage function
+            from app.dvc_handler import add_stage
+            
+            # Apply each stage from the configuration
+            for stage_data in config["stages"]:
+                await add_stage(
+                    user_id, 
+                    project_id,
+                    name=stage_data["name"],
+                    deps=stage_data.get("deps", []),
+                    outs=stage_data.get("outs", []),
+                    params=stage_data.get("params"),
+                    metrics=stage_data.get("metrics"),
+                    plots=stage_data.get("plots"),
+                    command=stage_data["command"]
+                )
+            
+            return {
+                "message": f"Pipeline '{config['name']}' recovered successfully",
+                "config_name": config["name"],
+                "stages_applied": len(config["stages"])
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to apply pipeline configuration: {str(e)}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in recover_pipeline:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to recover pipeline: {str(e)}")

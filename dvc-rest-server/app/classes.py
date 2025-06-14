@@ -230,3 +230,47 @@ class RunExperimentRequest(BaseModel):
     keep_running: bool = False
     ignore_errors: bool = False
     targets: Optional[List[str]] = None
+
+class PipelineStage(BaseModel):
+    name: str
+    deps: List[str] = []
+    outs: List[str] = []
+    params: Optional[List[str]] = None
+    metrics: Optional[List[str]] = None
+    plots: Optional[List[str]] = None
+    command: str
+    description: Optional[str] = None
+
+class PipelineConfig(BaseModel):
+    name: str
+    description: Optional[str] = None
+    stages: List[PipelineStage]
+    version: str = "1.0"
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    is_active: bool = True
+
+class PipelineConfigCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    stages: List[PipelineStage]
+
+class PipelineConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    stages: Optional[List[PipelineStage]] = None
+    is_active: Optional[bool] = None
+
+class PipelineExecutionRequest(BaseModel):
+    pipeline_config_id: Optional[str] = None
+    force: bool = False
+    dry_run: bool = False
+    targets: Optional[List[str]] = None
+
+class PipelineExecutionResult(BaseModel):
+    execution_id: str
+    status: str  # "running", "completed", "failed"
+    start_time: str
+    end_time: Optional[str] = None
+    output: Optional[str] = None
+    error: Optional[str] = None

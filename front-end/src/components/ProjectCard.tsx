@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { Project } from '../types/api';
 
 interface ProjectCardProps {
@@ -19,7 +20,10 @@ export default function ProjectCard({ project }: ProjectCardProps) {
     }
 
     return (
-        <div className="block bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all">
+        <Link
+            to={`/project/${project._id}`}
+            className="block bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-all"
+        >
             <div className="flex justify-between items-start mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">{project.project_name}</h2>
                 <span className={`px-2 py-1 text-xs rounded-full ${project.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -58,6 +62,6 @@ export default function ProjectCard({ project }: ProjectCardProps) {
                     </p>
                 )}
             </div>
-        </div>
+        </Link>
     );
 } 

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-__all__ = ['init_db', 'close_db', 'get_database', 'get_users_collection', 'get_projects_collection']
+__all__ = ['init_db', 'close_db', 'get_database', 'get_users_collection', 'get_projects_collection', 'get_pipeline_configs_collection']
 
 # MongoDB connection string from environment variable
 MONGODB_URL = os.getenv('MONGODB_URL')
@@ -20,6 +20,7 @@ client = None
 db = None
 users_collection = None
 projects_collection = None
+pipeline_configs_collection = None
 
 async def init_if_needed():
     """Initialize database if not already initialized"""
@@ -43,9 +44,15 @@ async def get_projects_collection():
     global projects_collection
     return projects_collection
 
+async def get_pipeline_configs_collection():
+    """Get pipeline configurations collection"""
+    await init_if_needed()
+    global pipeline_configs_collection
+    return pipeline_configs_collection
+
 async def init_db():
     """Initialize database connection"""
-    global client, db, users_collection, projects_collection
+    global client, db, users_collection, projects_collection, pipeline_configs_collection
     
     try:
         # Create a new client and connect to the server
@@ -67,6 +74,7 @@ async def init_db():
         db = client.get_database("dvc_server")
         users_collection = db.get_collection("users")
         projects_collection = db.get_collection("projects")
+        pipeline_configs_collection = db.get_collection("pipeline_configs")
         print("Collections initialized successfully")
         
         # Initialize collections if they don't exist
@@ -75,6 +83,8 @@ async def init_db():
             await db.create_collection("users")
         if "projects" not in collections:
             await db.create_collection("projects")
+        if "pipeline_configs" not in collections:
+            await db.create_collection("pipeline_configs")
             
         print("Database and collections initialized successfully")
         
@@ -84,14 +94,16 @@ async def init_db():
         db = None
         users_collection = None
         projects_collection = None
+        pipeline_configs_collection = None
         raise e
 
 async def close_db():
     """Close database connection"""
-    global client, db, users_collection, projects_collection
+    global client, db, users_collection, projects_collection, pipeline_configs_collection
     if client:
         client.close()
     client = None
     db = None
     users_collection = None
     projects_collection = None
+    pipeline_configs_collection = None
