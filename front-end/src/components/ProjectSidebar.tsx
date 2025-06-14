@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { VscFile } from 'react-icons/vsc';
 import { TbAtom, TbGitBranch } from 'react-icons/tb';
 import { GoBeaker } from 'react-icons/go';
+import { FiDatabase } from 'react-icons/fi';
 
 interface ProjectSidebarProps {
     projectId: string;
@@ -16,6 +17,7 @@ const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
 
     const mainMenuItems = [
         { path: `/project/${projectId}/data`, label: 'Project Data', icon: VscFile },
+        { path: `/project/${projectId}/data-management`, label: 'Data Management', icon: FiDatabase },
         { path: `/project/${projectId}/pipeline`, label: 'Pipeline', icon: TbGitBranch },
         { path: `/project/${projectId}/models`, label: 'Models', icon: TbAtom },
         { path: `/project/${projectId}/experiments`, label: 'Experiments', icon: GoBeaker },
@@ -30,8 +32,8 @@ const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
                             <Link
                                 to={item.path}
                                 className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${isActive(item.path)
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'text-gray-700 hover:bg-gray-100'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'text-gray-700 hover:bg-gray-100'
                                     }`}
                             >
                                 <item.icon className="w-5 h-5 mr-3" />

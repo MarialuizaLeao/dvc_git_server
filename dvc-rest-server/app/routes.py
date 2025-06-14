@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.classes import *
 from bson.objectid import ObjectId
 from typing import List, Optional
-from app.init_db import get_users_collection, get_projects_collection, get_pipeline_configs_collection
+from app.init_db import get_users_collection, get_projects_collection, get_pipeline_configs_collection, get_data_sources_collection, get_remote_storages_collection
 from pydantic import BaseModel
 from app.dvc_handler import (
     create_project as dvc_create_project,
@@ -22,12 +22,26 @@ from app.dvc_handler import (
     dvc_plots_diff,
     add_stages,
     add_stage,
-    repro
+    repro,
+    get_dvc_status,
+    create_pipeline_template,
+    get_pipeline_stages,
+    update_pipeline_stage,
+    remove_pipeline_stage,
+    validate_pipeline,
+    add_data_source,
+    remove_data_source,
+    update_data_source,
+    add_remote_storage,
+    remove_remote_storage,
+    list_remote_storages,
+    push_to_remote,
+    pull_from_remote,
+    sync_with_remote
 )
 from app.dvc_exp import *
 import traceback
 from datetime import datetime
-
 import os
 
 router = APIRouter()
@@ -72,6 +86,7 @@ async def create_user(user: UserCreate):
         user_dict = user.dict()
         result = await users_collection.insert_one(user_dict)
         created_user = await users_collection.find_one({"_id": result.inserted_id})
+        await create_user_directory(user_id)
         return User.from_mongo(created_user)
     except Exception as e:
         print("Error in create_user:", str(e))
@@ -271,6 +286,17 @@ async def track_project_files(user_id: str, project_id: str, request: TrackReque
     try:
         result = await dvc_track_files(user_id, project_id, request.files)
         return {"message": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/dvc/status")
+async def get_dvc_status_endpoint(user_id: str, project_id: str):
+    """
+    Get DVC status showing tracked, untracked, and modified files.
+    """
+    try:
+        result = await get_dvc_status(user_id, project_id)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -909,3 +935,832 @@ async def recover_pipeline(user_id: str, project_id: str, config_id: str):
         print("Error in recover_pipeline:", str(e))
         print("Traceback:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to recover pipeline: {str(e)}")
+
+# Additional Pipeline Management Endpoints
+
+@router.post("/{user_id}/{project_id}/pipeline/template")
+async def create_pipeline_template_endpoint(user_id: str, project_id: str, request: PipelineTemplateRequest):
+    """
+    Create a pipeline template with predefined stages.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Convert Pydantic stages to dict format for the handler
+        stages_dict = []
+        for stage in request.stages:
+            stage_dict = {
+                "name": stage.name,
+                "deps": stage.deps,
+                "outs": stage.outs,
+                "params": stage.params,
+                "metrics": stage.metrics,
+                "plots": stage.plots,
+                "command": stage.command
+            }
+            stages_dict.append(stage_dict)
+        
+        result = await create_pipeline_template(user_id, project_id, request.template_name, stages_dict)
+        return {"message": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in create_pipeline_template_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to create pipeline template: {str(e)}")
+
+@router.get("/{user_id}/{project_id}/pipeline/stages")
+async def get_pipeline_stages_endpoint(user_id: str, project_id: str):
+    """
+    Get the current pipeline stages from dvc.yaml.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        result = await get_pipeline_stages(user_id, project_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_pipeline_stages_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get pipeline stages: {str(e)}")
+
+@router.put("/{user_id}/{project_id}/pipeline/stage/{stage_name}")
+async def update_pipeline_stage_endpoint(user_id: str, project_id: str, stage_name: str, request: StageUpdateRequest):
+    """
+    Update an existing pipeline stage.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        result = await update_pipeline_stage(user_id, project_id, stage_name, request.updates)
+        return {"message": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in update_pipeline_stage_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to update pipeline stage: {str(e)}")
+
+@router.delete("/{user_id}/{project_id}/pipeline/stage/{stage_name}")
+async def remove_pipeline_stage_endpoint(user_id: str, project_id: str, stage_name: str):
+    """
+    Remove a pipeline stage from dvc.yaml.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        result = await remove_pipeline_stage(user_id, project_id, stage_name)
+        return {"message": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in remove_pipeline_stage_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to remove pipeline stage: {str(e)}")
+
+@router.get("/{user_id}/{project_id}/pipeline/validate")
+async def validate_pipeline_endpoint(user_id: str, project_id: str):
+    """
+    Validate the current pipeline configuration.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        result = await validate_pipeline(user_id, project_id)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in validate_pipeline_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to validate pipeline: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/pipeline/run")
+async def run_pipeline_endpoint(user_id: str, project_id: str, request: PipelineRunRequest):
+    """
+    Run the pipeline with optional parameters.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        result = await repro(
+            user_id, 
+            project_id, 
+            target=request.target,
+            pipeline=request.pipeline,
+            force=request.force,
+            dry_run=request.dry_run,
+            no_commit=request.no_commit
+        )
+        
+        return {
+            "message": "Pipeline executed successfully",
+            "output": result,
+            "parameters": {
+                "target": request.target,
+                "pipeline": request.pipeline,
+                "force": request.force,
+                "dry_run": request.dry_run,
+                "no_commit": request.no_commit
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in run_pipeline_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to run pipeline: {str(e)}")
+
+# Data Sources endpoints
+@router.get("/{user_id}/{project_id}/data/sources")
+async def get_data_sources(user_id: str, project_id: str):
+    """
+    Get all data sources for a project.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get data sources from database
+        data_sources_collection = await get_data_sources_collection()
+        data_sources = await data_sources_collection.find({
+            "user_id": user_id,
+            "project_id": project_id
+        }).to_list(None)
+        
+        # Convert ObjectId to string for JSON serialization
+        serialized_sources = []
+        for source in data_sources:
+            source_dict = dict(source)
+            source_dict["_id"] = str(source_dict["_id"])
+            serialized_sources.append(source_dict)
+        
+        return {"data_sources": serialized_sources}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_data_sources:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get data sources: {str(e)}")
+
+@router.get("/{user_id}/{project_id}/data/source/{source_id}")
+async def get_data_source(user_id: str, project_id: str, source_id: str):
+    """
+    Get a specific data source by ID.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get data source from database
+        data_sources_collection = await get_data_sources_collection()
+        data_source = await data_sources_collection.find_one({
+            "_id": ObjectId(source_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not data_source:
+            raise HTTPException(status_code=404, detail="Data source not found")
+        
+        # Convert ObjectId to string for JSON serialization
+        source_dict = dict(data_source)
+        source_dict["_id"] = str(source_dict["_id"])
+        
+        return source_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_data_source:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get data source: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/data/source")
+async def create_data_source(user_id: str, project_id: str, request: CreateDataSourceRequest):
+    """
+    Create a new data source.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Prepare data source data
+        data_source_data = {
+            "user_id": user_id,
+            "project_id": project_id,
+            "name": request.name,
+            "description": request.description,
+            "type": request.type,
+            "source": request.source,
+            "destination": request.destination,
+            "size": None,  # Will be updated after download
+            "format": None,  # Will be detected from file
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "status": "pending",
+            "error": None
+        }
+        
+        # Save to database first
+        data_sources_collection = await get_data_sources_collection()
+        result = await data_sources_collection.insert_one(data_source_data)
+        source_id = str(result.inserted_id)
+        
+        try:
+            # Add data source using DVC
+            result = await add_data_source(
+                user_id=user_id,
+                project_id=project_id,
+                name=request.name,
+                source_type=request.type.value,
+                source_path=request.source,
+                destination=request.destination,
+                description=request.description
+            )
+            
+            # Update status to completed
+            await data_sources_collection.update_one(
+                {"_id": ObjectId(source_id)},
+                {"$set": {"status": "completed", "updated_at": datetime.now().isoformat()}}
+            )
+            
+            return {
+                "message": "Data source created successfully",
+                "id": source_id,
+                "dvc_result": result
+            }
+            
+        except Exception as e:
+            # Update status to failed
+            await data_sources_collection.update_one(
+                {"_id": ObjectId(source_id)},
+                {"$set": {"status": "failed", "error": str(e), "updated_at": datetime.now().isoformat()}}
+            )
+            raise e
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in create_data_source:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to create data source: {str(e)}")
+
+@router.put("/{user_id}/{project_id}/data/source/{source_id}")
+async def update_data_source_endpoint(user_id: str, project_id: str, source_id: str, request: UpdateDataSourceRequest):
+    """
+    Update a data source.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get existing data source
+        data_sources_collection = await get_data_sources_collection()
+        data_source = await data_sources_collection.find_one({
+            "_id": ObjectId(source_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not data_source:
+            raise HTTPException(status_code=404, detail="Data source not found")
+        
+        # Prepare update data
+        update_data = {"updated_at": datetime.now().isoformat()}
+        if request.name is not None:
+            update_data["name"] = request.name
+        if request.description is not None:
+            update_data["description"] = request.description
+        if request.status is not None:
+            update_data["status"] = request.status
+        
+        # Update in database
+        await data_sources_collection.update_one(
+            {"_id": ObjectId(source_id)},
+            {"$set": update_data}
+        )
+        
+        return {"message": "Data source updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in update_data_source_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to update data source: {str(e)}")
+
+@router.delete("/{user_id}/{project_id}/data/source/{source_id}")
+async def delete_data_source_endpoint(user_id: str, project_id: str, source_id: str):
+    """
+    Delete a data source.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get existing data source
+        data_sources_collection = await get_data_sources_collection()
+        data_source = await data_sources_collection.find_one({
+            "_id": ObjectId(source_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not data_source:
+            raise HTTPException(status_code=404, detail="Data source not found")
+        
+        try:
+            # Remove data source using DVC
+            result = await remove_data_source(
+                user_id=user_id,
+                project_id=project_id,
+                destination=data_source["destination"]
+            )
+            
+            # Remove from database
+            await data_sources_collection.delete_one({"_id": ObjectId(source_id)})
+            
+            return {"message": "Data source deleted successfully", "dvc_result": result}
+            
+        except Exception as e:
+            raise e
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in delete_data_source_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to delete data source: {str(e)}")
+
+# Remote Storage endpoints
+@router.get("/{user_id}/{project_id}/data/remotes")
+async def get_remote_storages(user_id: str, project_id: str):
+    """
+    Get all remote storages for a project.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get remote storages from database
+        remote_storages_collection = await get_remote_storages_collection()
+        remote_storages = await remote_storages_collection.find({
+            "user_id": user_id,
+            "project_id": project_id
+        }).to_list(None)
+        
+        # Convert ObjectId to string for JSON serialization
+        serialized_remotes = []
+        for remote in remote_storages:
+            remote_dict = dict(remote)
+            remote_dict["_id"] = str(remote_dict["_id"])
+            serialized_remotes.append(remote_dict)
+        
+        return {"remote_storages": serialized_remotes}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_remote_storages:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get remote storages: {str(e)}")
+
+@router.get("/{user_id}/{project_id}/data/remote/{remote_id}")
+async def get_remote_storage(user_id: str, project_id: str, remote_id: str):
+    """
+    Get a specific remote storage by ID.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get remote storage from database
+        remote_storages_collection = await get_remote_storages_collection()
+        remote_storage = await remote_storages_collection.find_one({
+            "_id": ObjectId(remote_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not remote_storage:
+            raise HTTPException(status_code=404, detail="Remote storage not found")
+        
+        # Convert ObjectId to string for JSON serialization
+        remote_dict = dict(remote_storage)
+        remote_dict["_id"] = str(remote_dict["_id"])
+        
+        return remote_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_remote_storage:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get remote storage: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/data/remote")
+async def create_remote_storage(user_id: str, project_id: str, request: CreateRemoteRequest):
+    """
+    Create a new remote storage.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Prepare remote storage data
+        remote_storage_data = {
+            "user_id": user_id,
+            "project_id": project_id,
+            "name": request.name,
+            "url": request.url,
+            "type": request.type,
+            "is_default": request.is_default,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Save to database first
+        remote_storages_collection = await get_remote_storages_collection()
+        result = await remote_storages_collection.insert_one(remote_storage_data)
+        remote_id = str(result.inserted_id)
+        
+        try:
+            # Add remote storage using DVC
+            remote_type = "default" if request.is_default else "cache"
+            result = await add_remote_storage(
+                user_id=user_id,
+                project_id=project_id,
+                name=request.name,
+                url=request.url,
+                remote_type=remote_type
+            )
+            
+            return {
+                "message": "Remote storage created successfully",
+                "id": remote_id,
+                "dvc_result": result
+            }
+            
+        except Exception as e:
+            # Remove from database if DVC operation failed
+            await remote_storages_collection.delete_one({"_id": ObjectId(remote_id)})
+            raise e
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in create_remote_storage:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to create remote storage: {str(e)}")
+
+@router.put("/{user_id}/{project_id}/data/remote/{remote_id}")
+async def update_remote_storage(user_id: str, project_id: str, remote_id: str, request: dict):
+    """
+    Update a remote storage.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get existing remote storage
+        remote_storages_collection = await get_remote_storages_collection()
+        remote_storage = await remote_storages_collection.find_one({
+            "_id": ObjectId(remote_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not remote_storage:
+            raise HTTPException(status_code=404, detail="Remote storage not found")
+        
+        # Prepare update data
+        update_data = {"updated_at": datetime.now().isoformat()}
+        if "name" in request:
+            update_data["name"] = request["name"]
+        if "url" in request:
+            update_data["url"] = request["url"]
+        if "is_default" in request:
+            update_data["is_default"] = request["is_default"]
+        
+        # Update in database
+        await remote_storages_collection.update_one(
+            {"_id": ObjectId(remote_id)},
+            {"$set": update_data}
+        )
+        
+        return {"message": "Remote storage updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in update_remote_storage:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to update remote storage: {str(e)}")
+
+@router.delete("/{user_id}/{project_id}/data/remote/{remote_id}")
+async def delete_remote_storage(user_id: str, project_id: str, remote_id: str):
+    """
+    Delete a remote storage.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get existing remote storage
+        remote_storages_collection = await get_remote_storages_collection()
+        remote_storage = await remote_storages_collection.find_one({
+            "_id": ObjectId(remote_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not remote_storage:
+            raise HTTPException(status_code=404, detail="Remote storage not found")
+        
+        try:
+            # Remove remote storage using DVC
+            result = await remove_remote_storage(
+                user_id=user_id,
+                project_id=project_id,
+                name=remote_storage["name"]
+            )
+            
+            # Remove from database
+            await remote_storages_collection.delete_one({"_id": ObjectId(remote_id)})
+            
+            return {"message": "Remote storage deleted successfully", "dvc_result": result}
+            
+        except Exception as e:
+            raise e
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in delete_remote_storage:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to delete remote storage: {str(e)}")
+
+# Additional Remote Storage Operations
+
+@router.post("/{user_id}/{project_id}/data/remote/{remote_id}/push")
+async def push_to_remote_endpoint(user_id: str, project_id: str, remote_id: str, request: dict = None):
+    """
+    Push data to a specific remote storage.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get remote storage
+        remote_storages_collection = await get_remote_storages_collection()
+        remote_storage = await remote_storages_collection.find_one({
+            "_id": ObjectId(remote_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not remote_storage:
+            raise HTTPException(status_code=404, detail="Remote storage not found")
+        
+        # Get push parameters
+        target = request.get("target") if request else None
+        
+        # Push to remote
+        result = await push_to_remote(
+            user_id=user_id,
+            project_id=project_id,
+            remote_name=remote_storage["name"],
+            target=target
+        )
+        
+        return {"message": "Data pushed successfully", "result": result}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in push_to_remote_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to push to remote: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/data/remote/{remote_id}/pull")
+async def pull_from_remote_endpoint(user_id: str, project_id: str, remote_id: str, request: dict = None):
+    """
+    Pull data from a specific remote storage.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get remote storage
+        remote_storages_collection = await get_remote_storages_collection()
+        remote_storage = await remote_storages_collection.find_one({
+            "_id": ObjectId(remote_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not remote_storage:
+            raise HTTPException(status_code=404, detail="Remote storage not found")
+        
+        # Get pull parameters
+        target = request.get("target") if request else None
+        
+        # Pull from remote
+        result = await pull_from_remote(
+            user_id=user_id,
+            project_id=project_id,
+            remote_name=remote_storage["name"],
+            target=target
+        )
+        
+        return {"message": "Data pulled successfully", "result": result}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in pull_from_remote_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to pull from remote: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/data/remote/{remote_id}/sync")
+async def sync_with_remote_endpoint(user_id: str, project_id: str, remote_id: str):
+    """
+    Sync data with a specific remote storage.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get remote storage
+        remote_storages_collection = await get_remote_storages_collection()
+        remote_storage = await remote_storages_collection.find_one({
+            "_id": ObjectId(remote_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not remote_storage:
+            raise HTTPException(status_code=404, detail="Remote storage not found")
+        
+        # Sync with remote
+        result = await sync_with_remote(
+            user_id=user_id,
+            project_id=project_id,
+            remote_name=remote_storage["name"]
+        )
+        
+        return {"message": "Data synced successfully", "result": result}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in sync_with_remote_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to sync with remote: {str(e)}")
+
+@router.get("/{user_id}/{project_id}/data/remote/list")
+async def list_remote_storages_endpoint(user_id: str, project_id: str):
+    """
+    List all remote storages configured in DVC.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # List remote storages from DVC
+        result = await list_remote_storages(user_id, project_id)
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in list_remote_storages_endpoint:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to list remote storages: {str(e)}")

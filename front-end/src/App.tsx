@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Projects from './pages/Projects';
 import Project from './pages/Project';
 import Pipeline from './pages/Pipeline';
+import DataManagement from './pages/DataManagement';
 import Experiments from './pages/Experiments';
 import Home from './pages/Home';
 import ProjectPage from './pages/ProjectPage';
@@ -23,6 +24,7 @@ const App = () => {
             <Route path="/projects" element={<Projects />} />
             <Route path="/project/:id/data" element={<Project />} />
             <Route path="/project/:id/pipeline" element={<Pipeline />} />
+            <Route path="/project/:id/data-management" element={<DataManagement />} />
             <Route path="/project/:id/models" element={<div>Models Page</div>} />
             <Route path="/project/:id/experiments" element={<Experiments />} />
             <Route path="/project-page" element={<ProjectPage />} />

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from datetime import datetime
 from enum import Enum
 from bson import ObjectId
@@ -274,3 +274,181 @@ class PipelineExecutionResult(BaseModel):
     end_time: Optional[str] = None
     output: Optional[str] = None
     error: Optional[str] = None
+
+# Data Management Models
+class DataSourceType(str, Enum):
+    URL = "url"
+    LOCAL = "local"
+    REMOTE = "remote"
+
+class DataSourceStatus(str, Enum):
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class DataSource(BaseModel):
+    id: str = Field(alias="_id")
+    user_id: str
+    project_id: str
+    name: str
+    description: Optional[str] = None
+    type: DataSourceType
+    source: str  # URL, file path, or remote path
+    destination: str  # Where to store in the project
+    size: Optional[int] = None
+    format: Optional[str] = None
+    created_at: str
+    updated_at: str
+    status: DataSourceStatus
+    error: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {
+            ObjectId: str
+        }
+
+class CreateDataSourceRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    type: DataSourceType
+    source: str
+    destination: str
+
+class UpdateDataSourceRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[DataSourceStatus] = None
+
+class RemoteStorageType(str, Enum):
+    S3 = "s3"
+    GCS = "gcs"
+    AZURE = "azure"
+    SSH = "ssh"
+    LOCAL = "local"
+
+class RemoteStorage(BaseModel):
+    id: str = Field(alias="_id")
+    user_id: str
+    project_id: str
+    name: str
+    url: str
+    type: RemoteStorageType
+    is_default: bool
+    created_at: str
+    updated_at: str
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {
+            ObjectId: str
+        }
+
+class CreateRemoteRequest(BaseModel):
+    name: str
+    url: str
+    type: RemoteStorageType
+    is_default: bool = False
+
+# Pipeline Template and Stage Management Models
+class PipelineTemplateRequest(BaseModel):
+    template_name: str
+    stages: List[PipelineStage]
+
+class StageUpdateRequest(BaseModel):
+    updates: dict
+
+class PipelineRunRequest(BaseModel):
+    target: Optional[str] = None
+    pipeline: bool = False
+    force: bool = False
+    dry_run: bool = False
+    no_commit: bool = False
+
+class PipelineValidationResult(BaseModel):
+    valid: bool
+    message: str
+    details: Optional[str] = None
+
+class PipelineStageInfo(BaseModel):
+    name: str
+    deps: Optional[List[str]] = None
+    outs: Optional[List[str]] = None
+    params: Optional[List[str]] = None
+    metrics: Optional[List[str]] = None
+    plots: Optional[List[str]] = None
+    cmd: Optional[str] = None
+
+class PipelineInfo(BaseModel):
+    stages: Dict[str, PipelineStageInfo]
+
+# Code Upload Models
+
+class CodeFileType(str, Enum):
+    PYTHON = "python"
+    JUPYTER = "jupyter"
+    CONFIG = "config"
+    DOCUMENTATION = "documentation"
+    OTHER = "other"
+
+class CodeFileStatus(str, Enum):
+    PENDING = "pending"
+    UPLOADING = "uploading"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class CodeFile(BaseModel):
+    id: str = Field(alias="_id")
+    user_id: str
+    project_id: str
+    filename: str
+    file_path: str  # Path within the project
+    file_type: CodeFileType
+    description: Optional[str] = None
+    size: Optional[int] = None
+    content_hash: Optional[str] = None
+    created_at: str
+    updated_at: str
+    status: CodeFileStatus
+    error: Optional[str] = None
+    git_commit_hash: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+        json_encoders = {
+            ObjectId: str
+        }
+
+class CreateCodeFileRequest(BaseModel):
+    filename: str
+    file_path: str  # Path within the project (e.g., "src/main.py")
+    file_type: CodeFileType
+    description: Optional[str] = None
+    content: str  # File content as string
+
+class UpdateCodeFileRequest(BaseModel):
+    filename: Optional[str] = None
+    file_path: Optional[str] = None
+    description: Optional[str] = None
+    content: Optional[str] = None
+
+class CodeUploadResponse(BaseModel):
+    message: str
+    file_id: str
+    file_path: str
+    git_commit_hash: Optional[str] = None
+
+class CodeFileListResponse(BaseModel):
+    code_files: List[CodeFile]
+    total_count: int
+
+class BulkCodeUploadRequest(BaseModel):
+    files: List[CreateCodeFileRequest]
+
+class CodeFileSearchRequest(BaseModel):
+    file_type: Optional[CodeFileType] = None
+    filename_pattern: Optional[str] = None
+    path_pattern: Optional[str] = None
+    limit: Optional[int] = 50
+    offset: Optional[int] = 0

@@ -132,6 +132,7 @@ export interface UpdatePipelineRequest {
 }
 
 export interface PipelineExecutionRequest {
+    pipeline_config_id?: string;
     force?: boolean;
     dry_run?: boolean;
     targets?: string[];
@@ -148,7 +149,94 @@ export interface PipelineExecutionResponse {
 
 export interface PipelineRecoveryResponse {
     message: string;
+    config_name: string;
     stages_applied: number;
+}
+
+// Data Management types
+export interface DataSource {
+    _id: string;
+    user_id: string;
+    project_id: string;
+    name: string;
+    description?: string;
+    type: 'url' | 'local' | 'remote';
+    source: string; // URL, file path, or remote path
+    destination: string; // Where to store in the project
+    size?: number;
+    format?: string;
+    created_at: string;
+    updated_at: string;
+    status: 'pending' | 'downloading' | 'completed' | 'failed';
+    error?: string;
+}
+
+export interface CreateDataSourceRequest {
+    name: string;
+    description?: string;
+    type: 'url' | 'local' | 'remote';
+    source: string;
+    destination: string;
+}
+
+export interface UpdateDataSourceRequest {
+    name?: string;
+    description?: string;
+    status?: string;
+}
+
+export interface RemoteStorage {
+    _id: string;
+    user_id: string;
+    project_id: string;
+    name: string;
+    url: string;
+    type: 's3' | 'gcs' | 'azure' | 'ssh' | 'local';
+    is_default: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CreateRemoteRequest {
+    name: string;
+    url: string;
+    type: 's3' | 'gcs' | 'azure' | 'ssh' | 'local';
+    is_default?: boolean;
+}
+
+export interface TrackDataRequest {
+    files: string[];
+}
+
+export interface GetUrlRequest {
+    url: string;
+    dest: string;
+}
+
+export interface SetRemoteRequest {
+    remote_url: string;
+    remote_name?: string;
+}
+
+export interface DataOperationResponse {
+    message: string;
+    output?: string;
+    error?: string;
+}
+
+export interface DvcFile {
+    path: string;
+    size: number;
+    hash: string;
+    status: 'tracked' | 'untracked' | 'modified';
+    type: 'file' | 'directory';
+}
+
+export interface DvcStatus {
+    tracked: DvcFile[];
+    untracked: DvcFile[];
+    modified: DvcFile[];
+    total_size: number;
 }
 
 // API Response types

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { User, Project, CreateProjectRequest, CreateExperimentData, Pipeline, CreatePipelineRequest, UpdatePipelineRequest, PipelineExecutionRequest, PipelineExecutionResponse, PipelineRecoveryResponse } from '../types/api';
+import type { User, Project, CreateProjectRequest, CreateExperimentData, Pipeline, CreatePipelineRequest, UpdatePipelineRequest, PipelineExecutionRequest, PipelineExecutionResponse, PipelineRecoveryResponse, DataSource, CreateDataSourceRequest, UpdateDataSourceRequest, RemoteStorage, CreateRemoteRequest, TrackDataRequest, GetUrlRequest, SetRemoteRequest, DataOperationResponse, DvcStatus } from '../types/api';
 
 // Create axios instance
 const api = axios.create({
@@ -190,48 +190,93 @@ export const projectApi = {
 
     // Pipeline operations
     getPipeline: async (userId: string, projectId: string) => {
-        const response = await api.get<Pipeline>(
-            `/${userId}/${projectId}/pipeline`
+        // Get all pipeline configs and return the first one (since we only support one per project)
+        const response = await api.get<{ pipeline_configs: Pipeline[] }>(
+            `/${userId}/${projectId}/pipeline/configs`
         );
-        return response.data;
+        const configs = response.data.pipeline_configs;
+        if (configs.length === 0) {
+            throw new Error('No pipeline found');
+        }
+        return configs[0]; // Return the first pipeline config
     },
 
     createPipeline: async (userId: string, projectId: string, data: CreatePipelineRequest) => {
         const response = await api.post<{ message: string; id: string }>(
-            `/${userId}/${projectId}/pipeline`,
+            `/${userId}/${projectId}/pipeline/config`,
             data
         );
         return response.data;
     },
 
     updatePipeline: async (userId: string, projectId: string, data: UpdatePipelineRequest) => {
-        const response = await api.put<{ message: string }>(
-            `/${userId}/${projectId}/pipeline`,
-            data
-        );
-        return response.data;
+        // First get the pipeline to get its ID
+        try {
+            const pipeline = await projectApi.getPipeline(userId, projectId);
+            const response = await api.put<{ message: string }>(
+                `/${userId}/${projectId}/pipeline/config/${pipeline._id}`,
+                data
+            );
+            return response.data;
+        } catch (error) {
+            if (error instanceof Error && error.message === 'No pipeline found') {
+                throw new Error('No pipeline configuration found to update');
+            }
+            throw error;
+        }
     },
 
     deletePipeline: async (userId: string, projectId: string) => {
-        const response = await api.delete<{ message: string }>(
-            `/${userId}/${projectId}/pipeline`
-        );
-        return response.data;
+        // First get the pipeline to get its ID
+        try {
+            const pipeline = await projectApi.getPipeline(userId, projectId);
+            const response = await api.delete<{ message: string }>(
+                `/${userId}/${projectId}/pipeline/config/${pipeline._id}`
+            );
+            return response.data;
+        } catch (error) {
+            if (error instanceof Error && error.message === 'No pipeline found') {
+                throw new Error('No pipeline configuration found to delete');
+            }
+            throw error;
+        }
     },
 
     executePipeline: async (userId: string, projectId: string, data: PipelineExecutionRequest) => {
+        let executionData = { ...data };
+
+        // If no pipeline_config_id is provided, get the project's pipeline
+        if (!data.pipeline_config_id) {
+            try {
+                const pipeline = await projectApi.getPipeline(userId, projectId);
+                executionData.pipeline_config_id = pipeline._id;
+            } catch (error) {
+                // If no pipeline exists, execute without config_id (use project's default pipeline)
+                console.log('No pipeline configuration found, executing project pipeline');
+            }
+        }
+
         const response = await api.post<PipelineExecutionResponse>(
             `/${userId}/${projectId}/pipeline/execute`,
-            data
+            executionData
         );
         return response.data;
     },
 
     recoverPipeline: async (userId: string, projectId: string) => {
-        const response = await api.post<PipelineRecoveryResponse>(
-            `/${userId}/${projectId}/pipeline/recover`
-        );
-        return response.data;
+        // First get the pipeline to get its ID
+        try {
+            const pipeline = await projectApi.getPipeline(userId, projectId);
+            const response = await api.post<PipelineRecoveryResponse>(
+                `/${userId}/${projectId}/pipeline/recover?config_id=${pipeline._id}`
+            );
+            return response.data;
+        } catch (error) {
+            if (error instanceof Error && error.message === 'No pipeline found') {
+                throw new Error('No pipeline configuration found to recover');
+            }
+            throw error;
+        }
     }
 };
 
@@ -256,6 +301,124 @@ export const experimentsApi = {
         const response = await api.get(`/experiments/${experimentId}/metrics`);
         return response;
     }
+};
+
+export const dataApi = {
+    // Data Management operations
+    getDataSources: async (userId: string, projectId: string) => {
+        const response = await api.get<{ data_sources: DataSource[] }>(
+            `/${userId}/${projectId}/data/sources`
+        );
+        return response.data.data_sources;
+    },
+
+    getDataSource: async (userId: string, projectId: string, sourceId: string) => {
+        const response = await api.get<DataSource>(
+            `/${userId}/${projectId}/data/source/${sourceId}`
+        );
+        return response.data;
+    },
+
+    createDataSource: async (userId: string, projectId: string, data: CreateDataSourceRequest) => {
+        const response = await api.post<{ message: string; id: string }>(
+            `/${userId}/${projectId}/data/source`,
+            data
+        );
+        return response.data;
+    },
+
+    updateDataSource: async (userId: string, projectId: string, sourceId: string, data: UpdateDataSourceRequest) => {
+        const response = await api.put<{ message: string }>(
+            `/${userId}/${projectId}/data/source/${sourceId}`,
+            data
+        );
+        return response.data;
+    },
+
+    deleteDataSource: async (userId: string, projectId: string, sourceId: string) => {
+        const response = await api.delete<{ message: string }>(
+            `/${userId}/${projectId}/data/source/${sourceId}`
+        );
+        return response.data;
+    },
+
+    getRemoteStorages: async (userId: string, projectId: string) => {
+        const response = await api.get<{ remote_storages: RemoteStorage[] }>(
+            `/${userId}/${projectId}/data/remotes`
+        );
+        return response.data.remote_storages;
+    },
+
+    createRemoteStorage: async (userId: string, projectId: string, data: CreateRemoteRequest) => {
+        const response = await api.post<{ message: string; id: string }>(
+            `/${userId}/${projectId}/data/remote`,
+            data
+        );
+        return response.data;
+    },
+
+    deleteRemoteStorage: async (userId: string, projectId: string, remoteId: string) => {
+        const response = await api.delete<{ message: string }>(
+            `/${userId}/${projectId}/data/remote/${remoteId}`
+        );
+        return response.data;
+    },
+
+    // DVC Data operations (using existing backend endpoints)
+    trackData: async (userId: string, projectId: string, files: string[]) => {
+        const response = await api.post<DataOperationResponse>(
+            `/${userId}/${projectId}/track_data`,
+            { files }
+        );
+        return response.data;
+    },
+
+    trackFiles: async (userId: string, projectId: string, files: string[]) => {
+        const response = await api.post<DataOperationResponse>(
+            `/${userId}/${projectId}/track_files`,
+            { files }
+        );
+        return response.data;
+    },
+
+    getUrl: async (userId: string, projectId: string, url: string, dest: string) => {
+        const response = await api.post<DataOperationResponse>(
+            `/${userId}/${projectId}/get_url`,
+            { url, dest }
+        );
+        return response.data;
+    },
+
+    setRemote: async (userId: string, projectId: string, remoteUrl: string, remoteName?: string) => {
+        const response = await api.get<DataOperationResponse>(
+            `/${userId}/${projectId}/set_remote`,
+            {
+                params: { remote_url: remoteUrl, remote_name: remoteName }
+            }
+        );
+        return response.data;
+    },
+
+    pushData: async (userId: string, projectId: string) => {
+        const response = await api.post<DataOperationResponse>(
+            `/${userId}/${projectId}/push`
+        );
+        return response.data;
+    },
+
+    pullData: async (userId: string, projectId: string) => {
+        const response = await api.post<DataOperationResponse>(
+            `/${userId}/${projectId}/pull`
+        );
+        return response.data;
+    },
+
+    getDvcStatus: async (userId: string, projectId: string) => {
+        const response = await api.get<DvcStatus>(
+            `/${userId}/${projectId}/dvc/status`
+        );
+        return response.data;
+    },
 };
 
 export default api; 

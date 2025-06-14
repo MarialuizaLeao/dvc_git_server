@@ -11,7 +11,16 @@ export const usePipelines = (userId: string, projectId: string) => {
 
     const getPipeline = () => useQuery({
         queryKey: ['pipeline', userId, projectId],
-        queryFn: () => projectApi.getPipeline(userId, projectId),
+        queryFn: async () => {
+            try {
+                return await projectApi.getPipeline(userId, projectId);
+            } catch (error) {
+                if (error instanceof Error && error.message === 'No pipeline found') {
+                    return null; // Return null instead of throwing
+                }
+                throw error;
+            }
+        },
     });
 
     const createPipeline = useMutation({
