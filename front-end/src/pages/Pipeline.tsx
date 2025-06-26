@@ -5,12 +5,15 @@ import { useProjects } from '../hooks/useProjects';
 import { CURRENT_USER } from '../constants/user';
 import Card from '../components/Card';
 import PipelineConfigModal from '../components/PipelineConfigModal';
-import type { Pipeline, PipelineExecutionRequest } from '../types/api';
+import { pipelineExecutionApi, modelApi } from '../services/api';
+import { useQuery } from '@tanstack/react-query';
+import type { Pipeline, PipelineExecutionRequest, PipelineExecution, Model, ProjectModelFile } from '../types/api';
 
 export default function Pipeline() {
     const { id: projectId } = useParams();
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
+    const [activeTab, setActiveTab] = useState<'overview' | 'executions' | 'models'>('overview');
 
     const { getProject } = useProjects(CURRENT_USER.id);
     const { data: project, isLoading: projectLoading } = getProject(projectId || '');
@@ -25,6 +28,27 @@ export default function Pipeline() {
     } = usePipelines(CURRENT_USER.id, projectId || '');
 
     const { data: pipeline, isLoading: pipelineLoading } = getPipeline();
+
+    // Fetch execution history
+    const { data: executions, isLoading: executionsLoading } = useQuery({
+        queryKey: ['pipeline-executions', CURRENT_USER.id, projectId],
+        queryFn: () => pipelineExecutionApi.getExecutions(CURRENT_USER.id, projectId || ''),
+        enabled: !!projectId && activeTab === 'executions'
+    });
+
+    // Fetch models
+    const { data: models, isLoading: modelsLoading } = useQuery({
+        queryKey: ['models', CURRENT_USER.id, projectId],
+        queryFn: () => modelApi.getModels(CURRENT_USER.id, projectId || ''),
+        enabled: !!projectId && activeTab === 'models'
+    });
+
+    // Fetch project model files
+    const { data: projectModelFiles, isLoading: projectModelFilesLoading } = useQuery({
+        queryKey: ['project-model-files', CURRENT_USER.id, projectId],
+        queryFn: () => modelApi.getProjectModelFiles(CURRENT_USER.id, projectId || ''),
+        enabled: !!projectId && activeTab === 'models'
+    });
 
     const createPipelineMutation = createPipeline;
     const updatePipelineMutation = updatePipeline;
@@ -118,6 +142,13 @@ export default function Pipeline() {
         }
     };
 
+    const formatDuration = (seconds?: number) => {
+        if (!seconds) return 'N/A';
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}m ${remainingSeconds}s`;
+    };
+
     if (projectLoading || pipelineLoading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -171,149 +202,330 @@ export default function Pipeline() {
                         )}
                     </div>
                 </div>
+
+                {/* Tabs */}
+                {pipeline && (
+                    <div className="border-b border-gray-200">
+                        <nav className="-mb-px flex space-x-8">
+                            <button
+                                onClick={() => setActiveTab('overview')}
+                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'overview'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    }`}
+                            >
+                                Overview
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('executions')}
+                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'executions'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    }`}
+                            >
+                                Execution History
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('models')}
+                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'models'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    }`}
+                            >
+                                Models
+                            </button>
+                        </nav>
+                    </div>
+                )}
             </div>
 
             {/* Pipeline Content */}
             {pipeline ? (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Pipeline Overview */}
-                    <div className="lg:col-span-2">
-                        <Card title={pipeline.name}>
-                            <div className="space-y-4">
-                                <div>
-                                    <p className="text-gray-600">{pipeline.description || 'No description'}</p>
-                                    <div className="flex items-center mt-2">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pipeline.is_active)}`}>
-                                            {pipeline.is_active ? 'Active' : 'Inactive'}
-                                        </span>
-                                        <span className="ml-2 text-sm text-gray-500">
-                                            {pipeline.stages.length} stages
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* Last Execution Status */}
-                                {pipeline.last_execution && (
-                                    <div className="border-t pt-4">
-                                        <h4 className="text-sm font-medium text-gray-700 mb-2">Last Execution</h4>
-                                        <div className="bg-gray-50 p-3 rounded-lg">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getExecutionStatusColor(pipeline.last_execution.status)}`}>
-                                                        {pipeline.last_execution.status}
-                                                    </span>
-                                                    <span className="ml-2 text-sm text-gray-500">
-                                                        ID: {pipeline.last_execution.execution_id}
-                                                    </span>
-                                                </div>
-                                                <span className="text-xs text-gray-500">
-                                                    {new Date(pipeline.last_execution.start_time).toLocaleString()}
+                <div className="space-y-6">
+                    {activeTab === 'overview' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Pipeline Overview */}
+                            <div className="lg:col-span-2">
+                                <Card title={pipeline.name}>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <p className="text-gray-600">{pipeline.description || 'No description'}</p>
+                                            <div className="flex items-center mt-2">
+                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pipeline.is_active)}`}>
+                                                    {pipeline.is_active ? 'Active' : 'Inactive'}
+                                                </span>
+                                                <span className="ml-2 text-sm text-gray-500">
+                                                    {pipeline.stages.length} stages
                                                 </span>
                                             </div>
-                                            {pipeline.last_execution.error && (
-                                                <div className="mt-2 text-sm text-red-600">
-                                                    Error: {pipeline.last_execution.error}
+                                        </div>
+
+                                        {/* Last Execution Status */}
+                                        {pipeline.last_execution && (
+                                            <div className="border-t pt-4">
+                                                <h4 className="text-sm font-medium text-gray-700 mb-2">Last Execution</h4>
+                                                <div className="bg-gray-50 p-3 rounded-lg">
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getExecutionStatusColor(pipeline.last_execution.status)}`}>
+                                                                {pipeline.last_execution.status}
+                                                            </span>
+                                                            <span className="ml-2 text-sm text-gray-500">
+                                                                ID: {pipeline.last_execution.execution_id}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-xs text-gray-500">
+                                                            {new Date(pipeline.last_execution.start_time).toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                    {pipeline.last_execution.error && (
+                                                        <div className="mt-2 text-sm text-red-600">
+                                                            Error: {pipeline.last_execution.error}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Pipeline Stages */}
+                                        <div>
+                                            <h4 className="text-sm font-medium text-gray-700 mb-3">Pipeline Stages</h4>
+                                            <div className="space-y-3">
+                                                {pipeline.stages.map((stage, index) => (
+                                                    <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                                                        <span className="text-lg mt-1">{getStageIcon(stage.name)}</span>
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center justify-between">
+                                                                <h5 className="font-medium text-gray-900">{stage.name}</h5>
+                                                                <span className="text-xs text-gray-500">Stage {index + 1}</span>
+                                                            </div>
+                                                            {stage.description && (
+                                                                <p className="text-sm text-gray-600 mt-1">{stage.description}</p>
+                                                            )}
+                                                            <div className="mt-2 text-xs text-gray-500">
+                                                                <div><strong>Command:</strong> {stage.command}</div>
+                                                                {stage.deps.length > 0 && (
+                                                                    <div><strong>Dependencies:</strong> {stage.deps.join(', ')}</div>
+                                                                )}
+                                                                {stage.outs.length > 0 && (
+                                                                    <div><strong>Outputs:</strong> {stage.outs.join(', ')}</div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="flex flex-wrap gap-2 pt-4 border-t">
+                                            <button
+                                                onClick={handleExecutePipeline}
+                                                disabled={isExecuting}
+                                                className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 transition-colors disabled:opacity-50"
+                                            >
+                                                {isExecuting ? 'Executing...' : 'Execute'}
+                                            </button>
+                                            <button
+                                                onClick={handleRecoverPipeline}
+                                                className="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600 transition-colors"
+                                            >
+                                                Recover
+                                            </button>
+                                            <button
+                                                onClick={() => setIsConfigModalOpen(true)}
+                                                className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                onClick={handleDeletePipeline}
+                                                className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+
+                                        {pipeline.created_at && (
+                                            <div className="text-xs text-gray-500 pt-2 border-t">
+                                                Created: {new Date(pipeline.created_at).toLocaleDateString()}
+                                            </div>
+                                        )}
+                                    </div>
+                                </Card>
+                            </div>
+
+                            {/* Pipeline Info */}
+                            <div className="lg:col-span-1">
+                                <Card title="Pipeline Information">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h4 className="text-sm font-medium text-gray-700">Version</h4>
+                                            <p className="text-sm text-gray-900">{pipeline.version}</p>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-medium text-gray-700">Status</h4>
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pipeline.is_active)}`}>
+                                                {pipeline.is_active ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-medium text-gray-700">Stages</h4>
+                                            <p className="text-sm text-gray-900">{pipeline.stages.length} stages configured</p>
+                                        </div>
+                                        {pipeline.updated_at && (
+                                            <div>
+                                                <h4 className="text-sm font-medium text-gray-700">Last Updated</h4>
+                                                <p className="text-sm text-gray-900">{new Date(pipeline.updated_at).toLocaleDateString()}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </Card>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'executions' && (
+                        <Card title="Pipeline Execution History">
+                            {executionsLoading ? (
+                                <div className="flex items-center justify-center h-32">
+                                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                                </div>
+                            ) : executions && executions.executions.length > 0 ? (
+                                <div className="space-y-4">
+                                    {executions.executions.map((execution: PipelineExecution) => (
+                                        <div key={execution.execution_id} className="border border-gray-200 rounded-lg p-4">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center space-x-3">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getExecutionStatusColor(execution.status)}`}>
+                                                        {execution.status}
+                                                    </span>
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        Execution {execution.execution_id}
+                                                    </span>
+                                                </div>
+                                                <div className="text-sm text-gray-500">
+                                                    {new Date(execution.start_time).toLocaleString()}
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                                <div>
+                                                    <span className="text-gray-500">Duration:</span>
+                                                    <div className="font-medium">{formatDuration(execution.duration)}</div>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500">Models Produced:</span>
+                                                    <div className="font-medium">{execution.models_produced.length}</div>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500">Output Files:</span>
+                                                    <div className="font-medium">{execution.output_files.length}</div>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-500">Parameters:</span>
+                                                    <div className="font-medium">{Object.keys(execution.parameters_used).length}</div>
+                                                </div>
+                                            </div>
+
+                                            {execution.models_produced.length > 0 && (
+                                                <div className="mt-3">
+                                                    <span className="text-sm font-medium text-gray-700">Models Produced:</span>
+                                                    <div className="mt-1 space-y-1">
+                                                        {execution.models_produced.map((modelPath, index) => (
+                                                            <div key={index} className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                                                                {modelPath.split('/').pop()}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {execution.error_message && (
+                                                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded">
+                                                    <span className="text-sm font-medium text-red-700">Error:</span>
+                                                    <div className="text-sm text-red-600 mt-1">{execution.error_message}</div>
                                                 </div>
                                             )}
                                         </div>
-                                    </div>
-                                )}
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-8 text-gray-500">
+                                    No pipeline executions found.
+                                </div>
+                            )}
+                        </Card>
+                    )}
 
-                                {/* Pipeline Stages */}
-                                <div>
-                                    <h4 className="text-sm font-medium text-gray-700 mb-3">Pipeline Stages</h4>
+                    {activeTab === 'models' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Registered Models */}
+                            <Card title="Registered Models">
+                                {modelsLoading ? (
+                                    <div className="flex items-center justify-center h-32">
+                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                                    </div>
+                                ) : models && models.models.length > 0 ? (
                                     <div className="space-y-3">
-                                        {pipeline.stages.map((stage, index) => (
-                                            <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                                                <span className="text-lg mt-1">{getStageIcon(stage.name)}</span>
-                                                <div className="flex-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <h5 className="font-medium text-gray-900">{stage.name}</h5>
-                                                        <span className="text-xs text-gray-500">Stage {index + 1}</span>
-                                                    </div>
-                                                    {stage.description && (
-                                                        <p className="text-sm text-gray-600 mt-1">{stage.description}</p>
+                                        {models.models.map((model: Model) => (
+                                            <div key={model.id} className="border border-gray-200 rounded-lg p-3">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h4 className="font-medium text-gray-900">{model.name}</h4>
+                                                    <span className="text-xs text-gray-500">v{model.version}</span>
+                                                </div>
+                                                <div className="text-sm text-gray-600 mb-2">{model.description || 'No description'}</div>
+                                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                                                    <div><strong>Type:</strong> {model.model_type}</div>
+                                                    <div><strong>Framework:</strong> {model.framework}</div>
+                                                    <div><strong>Size:</strong> {(model.file_size / 1024 / 1024).toFixed(2)} MB</div>
+                                                    {model.accuracy && (
+                                                        <div><strong>Accuracy:</strong> {(model.accuracy * 100).toFixed(2)}%</div>
                                                     )}
-                                                    <div className="mt-2 text-xs text-gray-500">
-                                                        <div><strong>Command:</strong> {stage.command}</div>
-                                                        {stage.deps.length > 0 && (
-                                                            <div><strong>Dependencies:</strong> {stage.deps.join(', ')}</div>
-                                                        )}
-                                                        {stage.outs.length > 0 && (
-                                                            <div><strong>Outputs:</strong> {stage.outs.join(', ')}</div>
-                                                        )}
-                                                    </div>
+                                                </div>
+                                                <div className="mt-2 text-xs text-gray-400">
+                                                    Created: {new Date(model.created_at).toLocaleDateString()}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex flex-wrap gap-2 pt-4 border-t">
-                                    <button
-                                        onClick={handleExecutePipeline}
-                                        disabled={isExecuting}
-                                        className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 transition-colors disabled:opacity-50"
-                                    >
-                                        {isExecuting ? 'Executing...' : 'Execute'}
-                                    </button>
-                                    <button
-                                        onClick={handleRecoverPipeline}
-                                        className="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600 transition-colors"
-                                    >
-                                        Recover
-                                    </button>
-                                    <button
-                                        onClick={() => setIsConfigModalOpen(true)}
-                                        className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={handleDeletePipeline}
-                                        className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
-
-                                {pipeline.created_at && (
-                                    <div className="text-xs text-gray-500 pt-2 border-t">
-                                        Created: {new Date(pipeline.created_at).toLocaleDateString()}
+                                ) : (
+                                    <div className="text-center py-8 text-gray-500">
+                                        No registered models found.
                                     </div>
                                 )}
-                            </div>
-                        </Card>
-                    </div>
+                            </Card>
 
-                    {/* Pipeline Info */}
-                    <div className="lg:col-span-1">
-                        <Card title="Pipeline Information">
-                            <div className="space-y-4">
-                                <div>
-                                    <h4 className="text-sm font-medium text-gray-700">Version</h4>
-                                    <p className="text-sm text-gray-900">{pipeline.version}</p>
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-medium text-gray-700">Status</h4>
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pipeline.is_active)}`}>
-                                        {pipeline.is_active ? 'Active' : 'Inactive'}
-                                    </span>
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-medium text-gray-700">Stages</h4>
-                                    <p className="text-sm text-gray-900">{pipeline.stages.length} stages configured</p>
-                                </div>
-                                {pipeline.updated_at && (
-                                    <div>
-                                        <h4 className="text-sm font-medium text-gray-700">Last Updated</h4>
-                                        <p className="text-sm text-gray-900">{new Date(pipeline.updated_at).toLocaleDateString()}</p>
+                            {/* Project Model Files */}
+                            <Card title="Project Model Files">
+                                {projectModelFilesLoading ? (
+                                    <div className="flex items-center justify-center h-32">
+                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                                    </div>
+                                ) : projectModelFiles && projectModelFiles.files.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {projectModelFiles.files.map((file: ProjectModelFile) => (
+                                            <div key={file.path} className="border border-gray-200 rounded-lg p-3">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h4 className="font-medium text-gray-900">{file.name}</h4>
+                                                    <span className="text-xs text-gray-500">{file.file_type}</span>
+                                                </div>
+                                                <div className="text-sm text-gray-600 mb-2">{file.path}</div>
+                                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                                                    <div><strong>Size:</strong> {(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                                                    <div><strong>Modified:</strong> {new Date(file.modified_time).toLocaleDateString()}</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-gray-500">
+                                        No model files found in project directory.
                                     </div>
                                 )}
-                            </div>
-                        </Card>
-                    </div>
+                            </Card>
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">

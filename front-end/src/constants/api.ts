@@ -17,6 +17,13 @@ export const API_ENDPOINTS = {
     PIPELINE: (userId: string, projectId: string, pipelineId: string) => `${API_BASE_URL}/${userId}/${projectId}/pipelines/${pipelineId}`,
     PIPELINE_STAGES: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/pipelines/stages`,
     PIPELINE_CONFIG: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/pipelines/config`,
+    PIPELINE_EXECUTE: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/pipeline/execute`,
+    PIPELINE_RUN: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/pipeline/run`,
+
+    // Pipeline execution history
+    PIPELINE_EXECUTIONS: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/pipeline/executions`,
+    PIPELINE_EXECUTION: (userId: string, projectId: string, executionId: string) => `${API_BASE_URL}/${userId}/${projectId}/pipeline/executions/${executionId}`,
+    LATEST_PIPELINE_EXECUTION: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/pipeline/executions/latest`,
 
     // Data sources and remotes
     DATA_SOURCES: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/data-sources`,
@@ -25,6 +32,8 @@ export const API_ENDPOINTS = {
     // Code management
     CODE_FILES: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/code/files`,
     CODE_UPLOAD: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/code/upload`,
+    CODE_FILE_CONTENT: (userId: string, projectId: string, fileId: string) => `${API_BASE_URL}/${userId}/${projectId}/code/file/${fileId}/content`,
+    CODE_FILE_DELETE: (userId: string, projectId: string, fileId: string) => `${API_BASE_URL}/${userId}/${projectId}/code/file/${fileId}`,
 
     // Parameter management
     PARAMETERS: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/parameters`,
@@ -33,4 +42,15 @@ export const API_ENDPOINTS = {
     EXPORT_PARAMETERS: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/parameters/export`,
     IMPORT_PARAMETERS: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/parameters/import`,
     UPLOAD_PARAMETERS: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/parameters/upload`,
+
+    // Model management
+    MODELS: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/models`,
+    MODEL: (userId: string, projectId: string, modelId: string) => `${API_BASE_URL}/${userId}/${projectId}/models/${modelId}`,
+    MODEL_UPLOAD: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/models/upload`,
+    MODEL_DOWNLOAD: (userId: string, projectId: string, modelId: string) => `${API_BASE_URL}/${userId}/${projectId}/models/${modelId}/download`,
+    MODEL_DELETE: (userId: string, projectId: string, modelId: string) => `${API_BASE_URL}/${userId}/${projectId}/models/${modelId}`,
+    MODEL_COMPARE: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/models/compare`,
+
+    // Project model files (actual files from project directory)
+    PROJECT_MODEL_FILES: (userId: string, projectId: string) => `${API_BASE_URL}/${userId}/${projectId}/models/files`,
 }; 

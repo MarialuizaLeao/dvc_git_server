@@ -540,7 +540,8 @@ async def repro(
     if process.returncode != 0:
         raise Exception(f"Error running `dvc repro`: {stderr.decode().strip()}")
     
-    await run_command_async("git add dvc.lock && git commit -m 'pipeline repro'", cwd=project_path)
+    # Use safe git commit to handle cases where there are no changes
+    await safe_git_commit(project_path, "pipeline repro")
 
     return stdout.decode().strip()
 

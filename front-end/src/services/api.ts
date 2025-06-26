@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { User, Project, CreateProjectRequest, CreateExperimentData, Pipeline, CreatePipelineRequest, UpdatePipelineRequest, PipelineExecutionRequest, PipelineExecutionResponse, PipelineRecoveryResponse, DataSource, CreateDataSourceRequest, UpdateDataSourceRequest, RemoteStorage, CreateRemoteRequest, TrackDataRequest, GetUrlRequest, SetRemoteRequest, DataOperationResponse, DvcStatus } from '../types/api';
+import type { User, Project, CreateProjectRequest, CreateExperimentData, Pipeline, CreatePipelineRequest, UpdatePipelineRequest, PipelineExecutionRequest, PipelineExecutionResponse, PipelineRecoveryResponse, DataSource, CreateDataSourceRequest, UpdateDataSourceRequest, RemoteStorage, CreateRemoteRequest, TrackDataRequest, GetUrlRequest, SetRemoteRequest, DataOperationResponse, DvcStatus, PipelineExecutionListResponse, PipelineExecution, ModelListResponse, Model, ModelCreate, ModelUploadResponse, ModelComparisonResult, ProjectModelFilesResponse } from '../types/api';
 
 // Create axios instance
 const api = axios.create({
@@ -416,6 +416,89 @@ export const dataApi = {
     getDvcStatus: async (userId: string, projectId: string) => {
         const response = await api.get<DvcStatus>(
             `/${userId}/${projectId}/dvc/status`
+        );
+        return response.data;
+    },
+};
+
+// Pipeline Execution History API
+export const pipelineExecutionApi = {
+    getExecutions: async (userId: string, projectId: string, page: number = 1, pageSize: number = 10) => {
+        const response = await api.get<PipelineExecutionListResponse>(
+            `/${userId}/${projectId}/pipeline/executions`,
+            { params: { page, page_size: pageSize } }
+        );
+        return response.data;
+    },
+
+    getExecution: async (userId: string, projectId: string, executionId: string) => {
+        const response = await api.get<PipelineExecution>(
+            `/${userId}/${projectId}/pipeline/executions/${executionId}`
+        );
+        return response.data;
+    },
+
+    getLatestExecution: async (userId: string, projectId: string) => {
+        const response = await api.get<PipelineExecution>(
+            `/${userId}/${projectId}/pipeline/executions/latest`
+        );
+        return response.data;
+    },
+};
+
+// Model Management API
+export const modelApi = {
+    getModels: async (userId: string, projectId: string, page: number = 1, pageSize: number = 10, modelType?: string) => {
+        const params: any = { page, page_size: pageSize };
+        if (modelType) params.model_type = modelType;
+
+        const response = await api.get<ModelListResponse>(
+            `/${userId}/${projectId}/models`,
+            { params }
+        );
+        return response.data;
+    },
+
+    getModel: async (userId: string, projectId: string, modelId: string) => {
+        const response = await api.get<Model>(
+            `/${userId}/${projectId}/models/${modelId}`
+        );
+        return response.data;
+    },
+
+    uploadModel: async (userId: string, projectId: string, modelData: ModelCreate) => {
+        const response = await api.post<ModelUploadResponse>(
+            `/${userId}/${projectId}/models/upload`,
+            modelData
+        );
+        return response.data;
+    },
+
+    downloadModel: async (userId: string, projectId: string, modelId: string) => {
+        const response = await api.get<{ file_path: string; message: string }>(
+            `/${userId}/${projectId}/models/${modelId}/download`
+        );
+        return response.data;
+    },
+
+    deleteModel: async (userId: string, projectId: string, modelId: string) => {
+        const response = await api.delete<{ message: string }>(
+            `/${userId}/${projectId}/models/${modelId}`
+        );
+        return response.data;
+    },
+
+    compareModels: async (userId: string, projectId: string, modelIds: string[]) => {
+        const response = await api.post<ModelComparisonResult>(
+            `/${userId}/${projectId}/models/compare`,
+            { model_ids: modelIds }
+        );
+        return response.data;
+    },
+
+    getProjectModelFiles: async (userId: string, projectId: string) => {
+        const response = await api.get<ProjectModelFilesResponse>(
+            `/${userId}/${projectId}/models/files`
         );
         return response.data;
     },

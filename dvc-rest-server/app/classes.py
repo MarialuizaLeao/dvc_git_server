@@ -266,6 +266,7 @@ class PipelineExecutionRequest(BaseModel):
     force: bool = False
     dry_run: bool = False
     targets: Optional[List[str]] = None
+    parameters: Dict[str, Any] = {}
 
 class PipelineExecutionResult(BaseModel):
     execution_id: str
@@ -522,7 +523,100 @@ class ParameterValidationRequest(BaseModel):
     parameter_names: Optional[List[str]] = None
 
 class ParameterDiffRequest(BaseModel):
-    """Request model for comparing parameter sets."""
-    base_set_id: str
-    compare_set_id: str
-    show_differences_only: bool = True
+    parameter_name: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+
+# Model Management Classes
+class Model(BaseModel):
+    id: Optional[str] = None
+    name: str
+    version: str
+    file_path: str
+    file_size: int
+    model_type: str
+    framework: str
+    accuracy: Optional[float] = None
+    created_at: str
+    updated_at: str
+    description: Optional[str] = None
+    tags: List[str] = []
+    metadata: Dict[str, Any] = {}
+    pipeline_execution_id: Optional[str] = None
+
+class ModelCreate(BaseModel):
+    name: str
+    version: str
+    file_path: str
+    file_size: int
+    model_type: str
+    framework: str
+    accuracy: Optional[float] = None
+    description: Optional[str] = None
+    tags: List[str] = []
+    metadata: Dict[str, Any] = {}
+    pipeline_execution_id: Optional[str] = None
+
+class ModelUpdate(BaseModel):
+    name: Optional[str] = None
+    version: Optional[str] = None
+    accuracy: Optional[float] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class ModelListResponse(BaseModel):
+    models: List[Model]
+    total_count: int
+    page: int
+    page_size: int
+
+class ModelUploadResponse(BaseModel):
+    model_id: str
+    message: str
+    file_path: str
+
+class ModelComparisonResult(BaseModel):
+    comparison_id: str
+    models: List[Model]
+    comparison_metrics: Dict[str, Any]
+    comparison_date: str
+
+# Pipeline Execution History Classes
+class PipelineExecution(BaseModel):
+    id: Optional[str] = None
+    execution_id: str
+    pipeline_config_id: Optional[str] = None
+    status: str  # "running", "completed", "failed", "cancelled"
+    start_time: str
+    end_time: Optional[str] = None
+    duration: Optional[float] = None  # in seconds
+    stages: List[Dict[str, Any]] = []
+    output_files: List[str] = []
+    models_produced: List[str] = []
+    logs: List[str] = []
+    error_message: Optional[str] = None
+    parameters_used: Dict[str, Any] = {}
+    metrics: Dict[str, Any] = {}
+
+class PipelineExecutionCreate(BaseModel):
+    pipeline_config_id: str
+    parameters: Dict[str, Any] = {}
+
+class PipelineExecutionListResponse(BaseModel):
+    executions: List[PipelineExecution]
+    total_count: int
+    page: int
+    page_size: int
+
+# Project Model Files Response
+class ProjectModelFile(BaseModel):
+    name: str
+    path: str
+    size: int
+    modified_time: str
+    file_type: str
+
+class ProjectModelFilesResponse(BaseModel):
+    files: List[ProjectModelFile]
+    total_count: int

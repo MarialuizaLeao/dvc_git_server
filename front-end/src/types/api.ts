@@ -136,6 +136,7 @@ export interface PipelineExecutionRequest {
     force?: boolean;
     dry_run?: boolean;
     targets?: string[];
+    parameters?: Record<string, any>;
 }
 
 export interface PipelineExecutionResponse {
@@ -244,4 +245,104 @@ export interface ApiResponse<T> {
     data: T;
     message?: string;
     error?: string;
+}
+
+// Pipeline Execution History types
+export interface PipelineExecution {
+    id?: string;
+    execution_id: string;
+    pipeline_config_id?: string;
+    status: 'running' | 'completed' | 'failed' | 'cancelled';
+    start_time: string;
+    end_time?: string;
+    duration?: number; // in seconds
+    stages: Record<string, any>[];
+    output_files: string[];
+    models_produced: string[];
+    logs: string[];
+    error_message?: string;
+    parameters_used: Record<string, any>;
+    metrics: Record<string, any>;
+}
+
+export interface PipelineExecutionListResponse {
+    executions: PipelineExecution[];
+    total_count: number;
+    page: number;
+    page_size: number;
+}
+
+// Model Management types
+export interface Model {
+    id?: string;
+    name: string;
+    version: string;
+    file_path: string;
+    file_size: number;
+    model_type: string;
+    framework: string;
+    accuracy?: number;
+    created_at: string;
+    updated_at: string;
+    description?: string;
+    tags: string[];
+    metadata: Record<string, any>;
+    pipeline_execution_id?: string;
+}
+
+export interface ModelCreate {
+    name: string;
+    version: string;
+    file_path: string;
+    file_size: number;
+    model_type: string;
+    framework: string;
+    accuracy?: number;
+    description?: string;
+    tags?: string[];
+    metadata?: Record<string, any>;
+    pipeline_execution_id?: string;
+}
+
+export interface ModelUpdate {
+    name?: string;
+    version?: string;
+    accuracy?: number;
+    description?: string;
+    tags?: string[];
+    metadata?: Record<string, any>;
+}
+
+export interface ModelListResponse {
+    models: Model[];
+    total_count: number;
+    page: number;
+    page_size: number;
+}
+
+export interface ModelUploadResponse {
+    model_id: string;
+    message: string;
+    file_path: string;
+}
+
+export interface ModelComparisonResult {
+    comparison_id: string;
+    models: Model[];
+    comparison_metrics: Record<string, any>;
+    comparison_date: string;
+}
+
+// Project Model Files types
+export interface ProjectModelFile {
+    name: string;
+    path: string;
+    size: number;
+    modified_time: string;
+    file_type: string;
+}
+
+export interface ProjectModelFilesResponse {
+    files: ProjectModelFile[];
+    total_count: number;
 } 

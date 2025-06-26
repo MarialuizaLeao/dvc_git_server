@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, File, Form, UploadFile
 from app.classes import *
 from bson.objectid import ObjectId
 from typing import List, Optional
-from app.init_db import get_users_collection, get_projects_collection, get_pipeline_configs_collection, get_data_sources_collection, get_remote_storages_collection, get_code_files_collection
+from app.init_db import get_users_collection, get_projects_collection, get_pipeline_configs_collection, get_data_sources_collection, get_remote_storages_collection, get_code_files_collection, get_models_collection, get_pipeline_executions_collection
 from pydantic import BaseModel
 from app.dvc_handler import (
     create_project as dvc_create_project,
@@ -1035,19 +1035,43 @@ async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecu
             raise HTTPException(status_code=404, detail="Project not found")
         
         # If config_id is provided, verify it exists
+        pipeline_config = None
         if request.pipeline_config_id:
             pipeline_configs_collection = await get_pipeline_configs_collection()
-            config = await pipeline_configs_collection.find_one({
+            pipeline_config = await pipeline_configs_collection.find_one({
                 "_id": ObjectId(request.pipeline_config_id),
                 "user_id": user_id,
                 "project_id": project_id
             })
-            if not config:
+            if not pipeline_config:
                 raise HTTPException(status_code=404, detail="Pipeline configuration not found")
         
         # Execute the pipeline using existing DVC functionality
         execution_id = f"exec_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         start_time = datetime.now().isoformat()
+        
+        # Create execution record
+        execution_data = {
+            "execution_id": execution_id,
+            "pipeline_config_id": request.pipeline_config_id,
+            "user_id": user_id,
+            "project_id": project_id,
+            "status": "running",
+            "start_time": start_time,
+            "end_time": None,
+            "duration": None,
+            "stages": [],
+            "output_files": [],
+            "models_produced": [],
+            "logs": [],
+            "error_message": None,
+            "parameters_used": request.parameters or {},
+            "metrics": {}
+        }
+        
+        # Save execution record to database
+        executions_collection = await get_pipeline_executions_collection()
+        await executions_collection.insert_one(execution_data)
         
         try:
             # Use the existing repro function to execute the pipeline
@@ -1055,28 +1079,79 @@ async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecu
                 user_id, 
                 project_id, 
                 force=request.force,
-                dry=request.dry_run,
-                targets=request.targets
+                dry_run=request.dry_run,
+                target=request.targets[0] if request.targets else None
             )
             
             end_time = datetime.now().isoformat()
+            duration = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds()
+            
+            # Detect models produced by scanning the project directory
+            project_path = f"projects/{user_id}/{project_id}"
+            models_produced = []
+            if os.path.exists(project_path):
+                model_extensions = ['.pkl', '.joblib', '.h5', '.hdf5', '.pb', '.onnx', '.pt', '.pth', '.model', '.bin']
+                for root, dirs, files in os.walk(project_path):
+                    for file in files:
+                        if any(file.endswith(ext) for ext in model_extensions):
+                            file_path = os.path.join(root, file)
+                            file_stat = os.stat(file_path)
+                            # Check if file was modified during execution
+                            if file_stat.st_mtime >= datetime.fromisoformat(start_time).timestamp():
+                                models_produced.append(file_path)
+            
+            # Update execution record with success
+            await executions_collection.update_one(
+                {"execution_id": execution_id},
+                {
+                    "$set": {
+                        "status": "completed",
+                        "end_time": end_time,
+                        "duration": duration,
+                        "output_files": [],  # Will be populated from result parsing if needed
+                        "models_produced": models_produced,
+                        "logs": [result] if result else [],  # Store the output as logs
+                        "metrics": {}  # Will be populated from result parsing if needed
+                    }
+                }
+            )
             
             return {
                 "execution_id": execution_id,
                 "status": "completed",
                 "start_time": start_time,
                 "end_time": end_time,
+                "duration": duration,
                 "output": result,
+                "models_produced": models_produced,
                 "error": None
             }
         except Exception as e:
             end_time = datetime.now().isoformat()
+            duration = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds()
+            
+            # Update execution record with failure
+            await executions_collection.update_one(
+                {"execution_id": execution_id},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "end_time": end_time,
+                        "duration": duration,
+                        "error_message": str(e),
+                        "logs": [f"Error: {str(e)}"]
+                    }
+                }
+            )
+            
             return {
                 "execution_id": execution_id,
                 "status": "failed",
                 "start_time": start_time,
                 "end_time": end_time,
+                "duration": duration,
                 "output": None,
+                "models_produced": [],
                 "error": str(e)
             }
             
@@ -3107,10 +3182,10 @@ async def export_parameters_endpoint(user_id: str, project_id: str, request: Par
 @router.post("/{user_id}/{project_id}/parameters/validate")
 async def validate_parameters_endpoint(user_id: str, project_id: str, request: ParameterValidationRequest):
     """
-    Validate parameter values against their validation rules.
+    Validate parameter values against schema and constraints.
     """
     try:
-        # Verify project exists and belongs to user
+        # Validate project exists
         project_collection = await get_projects_collection()
         project = await project_collection.find_one({
             "_id": ObjectId(project_id),
@@ -3118,23 +3193,417 @@ async def validate_parameters_endpoint(user_id: str, project_id: str, request: P
         })
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
-        
-        # Get current parameter set
-        param_result = await get_parameter_set(user_id, project_id)
-        if not param_result["parameter_set"]:
-            raise HTTPException(status_code=404, detail="No parameter set found to validate")
-        
+
         # Validate parameters
-        validation_result = await validate_parameters(user_id, project_id, param_result["parameter_set"])
+        validation_result = await validate_parameters(user_id, project_id, request.parameter_values)
         
         return {
-            "message": "Parameter validation completed",
-            "validation": validation_result
+            "valid": validation_result["valid"],
+            "errors": validation_result.get("errors", []),
+            "warnings": validation_result.get("warnings", [])
         }
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        print("Error in validate_parameters_endpoint:", str(e))
+        print(f"Error validating parameters: {e}")
         print("Traceback:", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Failed to validate parameters: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Pipeline Execution History Endpoints
+@router.get("/{user_id}/{project_id}/pipeline/executions")
+async def get_pipeline_executions(user_id: str, project_id: str, page: int = 1, page_size: int = 10):
+    """
+    Get pipeline execution history for a project.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Get pipeline executions
+        executions_collection = await get_pipeline_executions_collection()
+        skip = (page - 1) * page_size
+        
+        executions = await executions_collection.find({
+            "user_id": user_id,
+            "project_id": project_id
+        }).sort("start_time", -1).skip(skip).limit(page_size).to_list(None)
+        
+        total_count = await executions_collection.count_documents({
+            "user_id": user_id,
+            "project_id": project_id
+        })
+
+        return PipelineExecutionListResponse(
+            executions=[PipelineExecution(
+                id=str(execution.get("_id")),
+                execution_id=execution.get("execution_id", ""),
+                pipeline_config_id=execution.get("pipeline_config_id"),
+                status=execution.get("status", "unknown"),
+                start_time=execution.get("start_time", ""),
+                end_time=execution.get("end_time"),
+                duration=execution.get("duration"),
+                stages=execution.get("stages", []),
+                output_files=execution.get("output_files", []),
+                models_produced=execution.get("models_produced", []),
+                logs=execution.get("logs", []),
+                error_message=execution.get("error_message"),
+                parameters_used=execution.get("parameters_used", {}),
+                metrics=execution.get("metrics", {})
+            ) for execution in executions],
+            total_count=total_count,
+            page=page,
+            page_size=page_size
+        )
+    except Exception as e:
+        print(f"Error getting pipeline executions: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/pipeline/executions/{execution_id}")
+async def get_pipeline_execution(user_id: str, project_id: str, execution_id: str):
+    """
+    Get a specific pipeline execution by ID.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Get pipeline execution
+        executions_collection = await get_pipeline_executions_collection()
+        execution = await executions_collection.find_one({
+            "execution_id": execution_id,
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not execution:
+            raise HTTPException(status_code=404, detail="Pipeline execution not found")
+
+        return PipelineExecution(**execution)
+    except Exception as e:
+        print(f"Error getting pipeline execution: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/pipeline/executions/latest")
+async def get_latest_pipeline_execution(user_id: str, project_id: str):
+    """
+    Get the latest pipeline execution for a project.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Get latest pipeline execution
+        executions_collection = await get_pipeline_executions_collection()
+        execution = await executions_collection.find_one({
+            "user_id": user_id,
+            "project_id": project_id
+        }, sort=[("start_time", -1)])
+        
+        if not execution:
+            raise HTTPException(status_code=404, detail="No pipeline executions found")
+
+        return PipelineExecution(**execution)
+    except Exception as e:
+        print(f"Error getting latest pipeline execution: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Model Management Endpoints
+@router.get("/{user_id}/{project_id}/models")
+async def get_models(user_id: str, project_id: str, page: int = 1, page_size: int = 10, model_type: Optional[str] = None):
+    """
+    Get models for a project.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Build query
+        query = {"user_id": user_id, "project_id": project_id}
+        if model_type:
+            query["model_type"] = model_type
+
+        # Get models
+        models_collection = await get_models_collection()
+        skip = (page - 1) * page_size
+        
+        models = await models_collection.find(query).sort("created_at", -1).skip(skip).limit(page_size).to_list(None)
+        
+        total_count = await models_collection.count_documents(query)
+
+        return ModelListResponse(
+            models=[Model(**model) for model in models],
+            total_count=total_count,
+            page=page,
+            page_size=page_size
+        )
+    except Exception as e:
+        print(f"Error getting models: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/models/{model_id}")
+async def get_model(user_id: str, project_id: str, model_id: str):
+    """
+    Get a specific model by ID.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Get model
+        models_collection = await get_models_collection()
+        model = await models_collection.find_one({
+            "_id": ObjectId(model_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not model:
+            raise HTTPException(status_code=404, detail="Model not found")
+
+        return Model(**model)
+    except Exception as e:
+        print(f"Error getting model: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{user_id}/{project_id}/models/upload")
+async def upload_model(user_id: str, project_id: str, model: ModelCreate):
+    """
+    Upload a new model.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Create model
+        models_collection = await get_models_collection()
+        model_data = model.dict()
+        model_data.update({
+            "user_id": user_id,
+            "project_id": project_id,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        })
+        
+        result = await models_collection.insert_one(model_data)
+        model_data["id"] = str(result.inserted_id)
+
+        return ModelUploadResponse(
+            model_id=str(result.inserted_id),
+            message="Model uploaded successfully",
+            file_path=model.file_path
+        )
+    except Exception as e:
+        print(f"Error uploading model: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/models/{model_id}/download")
+async def download_model(user_id: str, project_id: str, model_id: str):
+    """
+    Download a model file.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Get model
+        models_collection = await get_models_collection()
+        model = await models_collection.find_one({
+            "_id": ObjectId(model_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not model:
+            raise HTTPException(status_code=404, detail="Model not found")
+
+        # Check if file exists
+        if not os.path.exists(model["file_path"]):
+            raise HTTPException(status_code=404, detail="Model file not found")
+
+        return {
+            "file_path": model["file_path"],
+            "message": "Model file found"
+        }
+    except Exception as e:
+        print(f"Error downloading model: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{user_id}/{project_id}/models/{model_id}")
+async def delete_model(user_id: str, project_id: str, model_id: str):
+    """
+    Delete a model.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Get model
+        models_collection = await get_models_collection()
+        model = await models_collection.find_one({
+            "_id": ObjectId(model_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not model:
+            raise HTTPException(status_code=404, detail="Model not found")
+
+        # Delete model file if it exists
+        if os.path.exists(model["file_path"]):
+            os.remove(model["file_path"])
+
+        # Delete from database
+        await models_collection.delete_one({"_id": ObjectId(model_id)})
+
+        return {"message": "Model deleted successfully"}
+    except Exception as e:
+        print(f"Error deleting model: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{user_id}/{project_id}/models/compare")
+async def compare_models(user_id: str, project_id: str, model_ids: List[str]):
+    """
+    Compare multiple models.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Get models
+        models_collection = await get_models_collection()
+        models = []
+        for model_id in model_ids:
+            model = await models_collection.find_one({
+                "_id": ObjectId(model_id),
+                "user_id": user_id,
+                "project_id": project_id
+            })
+            if model:
+                models.append(Model(**model))
+
+        if len(models) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 models are required for comparison")
+
+        # Create comparison result
+        comparison_result = ModelComparisonResult(
+            comparison_id=f"comp_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            models=models,
+            comparison_metrics={
+                "accuracy_comparison": {model.name: model.accuracy for model in models if model.accuracy is not None},
+                "model_types": list(set(model.model_type for model in models)),
+                "frameworks": list(set(model.framework for model in models))
+            },
+            comparison_date=datetime.now().isoformat()
+        )
+
+        return comparison_result
+    except Exception as e:
+        print(f"Error comparing models: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/models/files")
+async def get_project_model_files(user_id: str, project_id: str):
+    """
+    Get model files from the project directory.
+    """
+    try:
+        # Validate project exists
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Get project path
+        project_path = f"projects/{user_id}/{project_id}"
+        if not os.path.exists(project_path):
+            raise HTTPException(status_code=404, detail="Project directory not found")
+
+        # Find model files in the project directory
+        model_files = []
+        model_extensions = ['.pkl', '.joblib', '.h5', '.hdf5', '.pb', '.onnx', '.pt', '.pth', '.model', '.bin']
+        
+        for root, dirs, files in os.walk(project_path):
+            for file in files:
+                if any(file.endswith(ext) for ext in model_extensions):
+                    file_path = os.path.join(root, file)
+                    file_stat = os.stat(file_path)
+                    model_files.append(ProjectModelFile(
+                        name=file,
+                        path=file_path,
+                        size=file_stat.st_size,
+                        modified_time=datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                        file_type=os.path.splitext(file)[1]
+                    ))
+
+        return ProjectModelFilesResponse(
+            files=model_files,
+            total_count=len(model_files)
+        )
+    except Exception as e:
+        print(f"Error getting project model files: {e}")
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
