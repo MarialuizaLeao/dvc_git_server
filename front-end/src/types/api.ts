@@ -345,4 +345,54 @@ export interface ProjectModelFile {
 export interface ProjectModelFilesResponse {
     files: ProjectModelFile[];
     total_count: number;
+}
+
+// Model Path Configuration types
+export interface ModelPathConfig {
+    _id: string;
+    user_id: string;
+    project_id: string;
+    model_path: string;
+    model_name: string;
+    description?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CreateModelPathRequest {
+    model_path: string;
+    model_name: string;
+    description?: string;
+}
+
+export interface UpdateModelPathRequest {
+    model_path?: string;
+    model_name?: string;
+    description?: string;
+}
+
+// Model Evaluation types
+export interface ModelEvaluation {
+    _id: string;
+    user_id: string;
+    project_id: string;
+    model_path: string;
+    evaluation_date: string;
+    metrics: Record<string, number>;
+    evaluation_logs: string[];
+    status: 'running' | 'completed' | 'failed';
+    error_message?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CreateEvaluationRequest {
+    model_path: string;
+}
+
+export interface EvaluationResult {
+    message: string;
+    evaluation_id: string;
+    metrics: Record<string, number>;
+    logs: string[];
 } 

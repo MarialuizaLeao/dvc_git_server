@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, File, Form, UploadFile
 from app.classes import *
 from bson.objectid import ObjectId
-from typing import List, Optional
-from app.init_db import get_users_collection, get_projects_collection, get_pipeline_configs_collection, get_data_sources_collection, get_remote_storages_collection, get_code_files_collection, get_models_collection, get_pipeline_executions_collection
+from typing import List, Optional, Dict, Any
+from app.init_db import get_users_collection, get_projects_collection, get_pipeline_configs_collection, get_data_sources_collection, get_remote_storages_collection, get_code_files_collection, get_models_collection, get_pipeline_executions_collection, get_model_paths_collection, get_model_evaluations_collection
 from pydantic import BaseModel
 from app.dvc_handler import (
     create_project as dvc_create_project,
@@ -58,6 +58,9 @@ from app.dvc_exp import *
 import traceback
 from datetime import datetime
 import os
+import asyncio
+import json
+import yaml
 
 router = APIRouter()
 
@@ -1087,7 +1090,8 @@ async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecu
             duration = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds()
             
             # Detect models produced by scanning the project directory
-            project_path = f"projects/{user_id}/{project_id}"
+            REPO_ROOT = "/home/marialuiza/Documents/faculdade/9periodo/poc/git_repo"
+            project_path = os.path.join(REPO_ROOT, user_id, project_id)
             models_produced = []
             if os.path.exists(project_path):
                 model_extensions = ['.pkl', '.joblib', '.h5', '.hdf5', '.pb', '.onnx', '.pt', '.pth', '.model', '.bin']
@@ -3330,7 +3334,7 @@ async def get_latest_pipeline_execution(user_id: str, project_id: str):
 @router.get("/{user_id}/{project_id}/models")
 async def get_models(user_id: str, project_id: str, page: int = 1, page_size: int = 10, model_type: Optional[str] = None):
     """
-    Get models for a project.
+    Get all models for a project with pagination.
     """
     try:
         # Validate project exists
@@ -3342,29 +3346,78 @@ async def get_models(user_id: str, project_id: str, page: int = 1, page_size: in
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
 
-        # Build query
-        query = {"user_id": user_id, "project_id": project_id}
+        # Build filter
+        filter_query = {
+            "user_id": user_id,
+            "project_id": project_id
+        }
         if model_type:
-            query["model_type"] = model_type
+            filter_query["model_type"] = model_type
 
-        # Get models
+        # Get models with pagination
         models_collection = await get_models_collection()
+        total_count = await models_collection.count_documents(filter_query)
+        
         skip = (page - 1) * page_size
+        models_cursor = models_collection.find(filter_query).skip(skip).limit(page_size)
         
-        models = await models_collection.find(query).sort("created_at", -1).skip(skip).limit(page_size).to_list(None)
-        
-        total_count = await models_collection.count_documents(query)
+        # Convert ObjectIds to strings for JSON serialization
+        models = []
+        async for model in models_cursor:
+            model["_id"] = str(model["_id"])
+            models.append(model)
 
-        return ModelListResponse(
-            models=[Model(**model) for model in models],
-            total_count=total_count,
-            page=page,
-            page_size=page_size
-        )
+        return {
+            "models": models,
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size
+        }
     except Exception as e:
         print(f"Error getting models: {e}")
         print("Traceback:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{user_id}/{project_id}/models/files")
+async def get_model_files(user_id: str, project_id: str):
+    """
+    Get all model files for a project.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get models collection
+        models_collection = await get_models_collection()
+        models_cursor = models_collection.find({
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        # Convert ObjectIds to strings for JSON serialization
+        model_files = []
+        async for model in models_cursor:
+            model["_id"] = str(model["_id"])
+            model_files.append(model)
+        
+        return {
+            "files": model_files,
+            "total_count": len(model_files)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_model_files:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get model files: {str(e)}")
 
 @router.get("/{user_id}/{project_id}/models/{model_id}")
 async def get_model(user_id: str, project_id: str, model_id: str):
@@ -3562,13 +3615,15 @@ async def compare_models(user_id: str, project_id: str, model_ids: List[str]):
         print("Traceback:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{user_id}/{project_id}/models/files")
-async def get_project_model_files(user_id: str, project_id: str):
+# Model Path Configuration Endpoints
+
+@router.get("/{user_id}/{project_id}/model-paths")
+async def get_model_paths(user_id: str, project_id: str):
     """
-    Get model files from the project directory.
+    Get the model paths from dvc.yaml pipeline configuration.
     """
     try:
-        # Validate project exists
+        # Verify project exists and belongs to user
         project_collection = await get_projects_collection()
         project = await project_collection.find_one({
             "_id": ObjectId(project_id),
@@ -3576,34 +3631,607 @@ async def get_project_model_files(user_id: str, project_id: str):
         })
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
-
-        # Get project path
-        project_path = f"projects/{user_id}/{project_id}"
-        if not os.path.exists(project_path):
-            raise HTTPException(status_code=404, detail="Project directory not found")
-
-        # Find model files in the project directory
-        model_files = []
-        model_extensions = ['.pkl', '.joblib', '.h5', '.hdf5', '.pb', '.onnx', '.pt', '.pth', '.model', '.bin']
         
-        for root, dirs, files in os.walk(project_path):
-            for file in files:
-                if any(file.endswith(ext) for ext in model_extensions):
-                    file_path = os.path.join(root, file)
-                    file_stat = os.stat(file_path)
-                    model_files.append(ProjectModelFile(
-                        name=file,
-                        path=file_path,
-                        size=file_stat.st_size,
-                        modified_time=datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
-                        file_type=os.path.splitext(file)[1]
-                    ))
-
-        return ProjectModelFilesResponse(
-            files=model_files,
-            total_count=len(model_files)
-        )
+        # Get model paths from dvc.yaml
+        dvc_config = await get_model_paths_from_dvc(user_id, project_id)
+        
+        if dvc_config["error"]:
+            return {
+                "model_paths": [],
+                "evaluation_stage": None,
+                "metrics_path": None,
+                "error": dvc_config["error"],
+                "exists": False
+            }
+        
+        # Convert to the expected format
+        model_paths = []
+        for model in dvc_config["models"]:
+            model_paths.append({
+                "_id": f"dvc_{model['stage']}",
+                "user_id": user_id,
+                "project_id": project_id,
+                "model_path": model["path"],
+                "model_name": f"Model from {model['stage']} stage",
+                "description": f"Model generated by {model['stage']} stage in DVC pipeline",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            })
+        
+        return {
+            "model_paths": model_paths,
+            "evaluation_stage": dvc_config["evaluation_stage"],
+            "metrics_path": dvc_config["metrics_path"],
+            "error": None,
+            "exists": len(model_paths) > 0
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error getting project model files: {e}")
+        print("Error in get_model_paths:", str(e))
         print("Traceback:", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get model paths: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/model-paths")
+async def create_model_path(user_id: str, project_id: str, request: CreateModelPathRequest):
+    """
+    Create or update the model path configuration for a project.
+    Only one model path is allowed per project.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get model paths collection
+        model_paths_collection = await get_model_paths_collection()
+        
+        # Check if a model path already exists for this project
+        existing_model_path = await model_paths_collection.find_one({
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if existing_model_path:
+            # Update existing model path
+            update_data = {
+                "model_path": request.model_path,
+                "model_name": request.model_name,
+                "description": request.description,
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            await model_paths_collection.update_one(
+                {"_id": existing_model_path["_id"]},
+                {"$set": update_data}
+            )
+            
+            # Get updated document
+            updated_model_path = await model_paths_collection.find_one({
+                "_id": existing_model_path["_id"]
+            })
+            updated_model_path["_id"] = str(updated_model_path["_id"])
+            
+            return {
+                "message": "Model path updated successfully",
+                "model_path": updated_model_path
+            }
+        else:
+            # Create new model path
+            model_path_data = {
+                "user_id": user_id,
+                "project_id": project_id,
+                "model_path": request.model_path,
+                "model_name": request.model_name,
+                "description": request.description,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            result = await model_paths_collection.insert_one(model_path_data)
+            model_path_data["_id"] = str(result.inserted_id)
+            
+            return {
+                "message": "Model path created successfully",
+                "model_path": model_path_data
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in create_model_path:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to create model path: {str(e)}")
+
+@router.put("/{user_id}/{project_id}/model-paths/{path_id}")
+async def update_model_path(user_id: str, project_id: str, path_id: str, request: UpdateModelPathRequest):
+    """
+    Update a model path configuration.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get model path configuration
+        model_paths_collection = await get_model_paths_collection()
+        model_path = await model_paths_collection.find_one({
+            "_id": ObjectId(path_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not model_path:
+            raise HTTPException(status_code=404, detail="Model path configuration not found")
+        
+        # Update model path configuration
+        update_data = {"updated_at": datetime.now().isoformat()}
+        if request.model_path:
+            update_data["model_path"] = request.model_path
+        if request.model_name:
+            update_data["model_name"] = request.model_name
+        if request.description is not None:
+            update_data["description"] = request.description
+        
+        await model_paths_collection.update_one(
+            {"_id": ObjectId(path_id)},
+            {"$set": update_data}
+        )
+        
+        return {
+            "message": f"Model path '{model_path['model_name']}' updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in update_model_path:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to update model path: {str(e)}")
+
+@router.delete("/{user_id}/{project_id}/model-paths/{path_id}")
+async def delete_model_path(user_id: str, project_id: str, path_id: str):
+    """
+    Delete a model path configuration.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get model path configuration
+        model_paths_collection = await get_model_paths_collection()
+        model_path = await model_paths_collection.find_one({
+            "_id": ObjectId(path_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not model_path:
+            raise HTTPException(status_code=404, detail="Model path configuration not found")
+        
+        # Delete model path configuration
+        await model_paths_collection.delete_one({"_id": ObjectId(path_id)})
+        
+        return {
+            "message": f"Model path '{model_path['model_name']}' deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in delete_model_path:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to delete model path: {str(e)}")
+
+# Model Evaluation Endpoints
+
+@router.get("/{user_id}/{project_id}/model-evaluations")
+async def get_model_evaluations(user_id: str, project_id: str):
+    """
+    Get all model evaluations for a project.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get model evaluations collection
+        model_evaluations_collection = await get_model_evaluations_collection()
+        model_evaluations_cursor = model_evaluations_collection.find({
+            "user_id": user_id,
+            "project_id": project_id
+        }).sort("created_at", -1)  # Sort by creation date, newest first
+        
+        # Convert ObjectIds to strings for JSON serialization
+        model_evaluations = []
+        async for evaluation in model_evaluations_cursor:
+            evaluation["_id"] = str(evaluation["_id"])
+            model_evaluations.append(evaluation)
+        
+        return {
+            "model_evaluations": model_evaluations,
+            "total_count": len(model_evaluations)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_model_evaluations:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get model evaluations: {str(e)}")
+
+@router.post("/{user_id}/{project_id}/evaluations")
+async def create_model_evaluation(user_id: str, project_id: str, request: CreateEvaluationRequest):
+    """
+    Create a model evaluation using the DVC pipeline evaluation stage.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get DVC configuration to validate model path
+        dvc_config = await get_model_paths_from_dvc(user_id, project_id)
+        
+        if dvc_config["error"]:
+            # Create evaluation record with failed status
+            evaluations_collection = await get_model_evaluations_collection()
+            evaluation_data = {
+                "user_id": user_id,
+                "project_id": project_id,
+                "model_path": request.model_path,
+                "evaluation_date": datetime.now().isoformat(),
+                "metrics": {},
+                "evaluation_logs": [f"DVC configuration error: {dvc_config['error']}"],
+                "status": "failed",
+                "error_message": f"DVC configuration error: {dvc_config['error']}",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            result = await evaluations_collection.insert_one(evaluation_data)
+            evaluation_id = str(result.inserted_id)
+            
+            return {
+                "message": f"Evaluation failed: {dvc_config['error']}",
+                "evaluation_id": evaluation_id
+            }
+        
+        # Check if model path exists in DVC pipeline
+        model_found = False
+        for model in dvc_config["models"]:
+            if model["path"] == request.model_path:
+                model_found = True
+                break
+        
+        if not model_found:
+            # Create evaluation record with failed status
+            evaluations_collection = await get_model_evaluations_collection()
+            evaluation_data = {
+                "user_id": user_id,
+                "project_id": project_id,
+                "model_path": request.model_path,
+                "evaluation_date": datetime.now().isoformat(),
+                "metrics": {},
+                "evaluation_logs": [f"Model path '{request.model_path}' not found in DVC pipeline"],
+                "status": "failed",
+                "error_message": f"Model path '{request.model_path}' not found in DVC pipeline",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            result = await evaluations_collection.insert_one(evaluation_data)
+            evaluation_id = str(result.inserted_id)
+            
+            return {
+                "message": f"Evaluation failed: Model path '{request.model_path}' not found in DVC pipeline",
+                "evaluation_id": evaluation_id
+            }
+        
+        # Check if evaluation stage exists
+        if not dvc_config["evaluation_stage"]:
+            # Create evaluation record with failed status
+            evaluations_collection = await get_model_evaluations_collection()
+            evaluation_data = {
+                "user_id": user_id,
+                "project_id": project_id,
+                "model_path": request.model_path,
+                "evaluation_date": datetime.now().isoformat(),
+                "metrics": {},
+                "evaluation_logs": ["No evaluation stage found in DVC pipeline"],
+                "status": "failed",
+                "error_message": "No evaluation stage found in DVC pipeline",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            result = await evaluations_collection.insert_one(evaluation_data)
+            evaluation_id = str(result.inserted_id)
+            
+            return {
+                "message": "Evaluation failed: No evaluation stage found in DVC pipeline",
+                "evaluation_id": evaluation_id
+            }
+        
+        # Create evaluation record
+        evaluations_collection = await get_model_evaluations_collection()
+        evaluation_data = {
+            "user_id": user_id,
+            "project_id": project_id,
+            "model_path": request.model_path,
+            "evaluation_date": datetime.now().isoformat(),
+            "metrics": {},
+            "evaluation_logs": [],
+            "status": "running",
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        result = await evaluations_collection.insert_one(evaluation_data)
+        evaluation_id = str(result.inserted_id)
+        
+        # Run evaluation in background using DVC
+        asyncio.create_task(run_dvc_model_evaluation(user_id, project_id, evaluation_id, request.model_path))
+        
+        # Return the created evaluation
+        evaluation_data = evaluation_data.copy()
+        evaluation_data["_id"] = str(evaluation_data["_id"])
+        
+        return {
+            "message": "Model evaluation created successfully using DVC pipeline",
+            "evaluation": evaluation_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in create_model_evaluation:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to create model evaluation: {str(e)}")
+
+@router.get("/{user_id}/{project_id}/evaluations/{evaluation_id}")
+async def get_model_evaluation(user_id: str, project_id: str, evaluation_id: str):
+    """
+    Get a specific model evaluation.
+    """
+    try:
+        # Verify project exists and belongs to user
+        project_collection = await get_projects_collection()
+        project = await project_collection.find_one({
+            "_id": ObjectId(project_id),
+            "user_id": user_id
+        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Get evaluation
+        evaluations_collection = await get_model_evaluations_collection()
+        evaluation = await evaluations_collection.find_one({
+            "_id": ObjectId(evaluation_id),
+            "user_id": user_id,
+            "project_id": project_id
+        })
+        
+        if not evaluation:
+            raise HTTPException(status_code=404, detail="Model evaluation not found")
+        
+        return evaluation
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in get_model_evaluation:", str(e))
+        print("Traceback:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to get model evaluation: {str(e)}")
+
+async def run_dvc_model_evaluation(user_id: str, project_id: str, evaluation_id: str, model_path: str):
+    """
+    Run model evaluation using DVC pipeline evaluation stage.
+    """
+    try:
+        evaluations_collection = await get_model_evaluations_collection()
+        
+        # Update status to running
+        await evaluations_collection.update_one(
+            {"_id": ObjectId(evaluation_id)},
+            {"$set": {"status": "running", "updated_at": datetime.now().isoformat()}}
+        )
+        
+        # Run DVC evaluation
+        result = await run_dvc_evaluation(user_id, project_id, model_path)
+        
+        if result["success"]:
+            await evaluations_collection.update_one(
+                {"_id": ObjectId(evaluation_id)},
+                {
+                    "$set": {
+                        "status": "completed",
+                        "metrics": result.get("metrics", {}),
+                        "evaluation_logs": result.get("logs", []),
+                        "updated_at": datetime.now().isoformat()
+                    }
+                }
+            )
+        else:
+            await evaluations_collection.update_one(
+                {"_id": ObjectId(evaluation_id)},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "error_message": result.get("error", "DVC evaluation failed"),
+                        "evaluation_logs": result.get("logs", []),
+                        "updated_at": datetime.now().isoformat()
+                    }
+                }
+            )
+            
+    except Exception as e:
+        print(f"Error in run_dvc_model_evaluation: {str(e)}")
+        evaluations_collection = await get_model_evaluations_collection()
+        await evaluations_collection.update_one(
+            {"_id": ObjectId(evaluation_id)},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": str(e),
+                    "updated_at": datetime.now().isoformat()
+                }
+            }
+        )
+
+# Helper function to read model paths from dvc.yaml
+async def get_model_paths_from_dvc(user_id: str, project_id: str) -> Dict[str, Any]:
+    """
+    Read model paths and evaluation configuration from dvc.yaml file.
+    """
+    try:
+        REPO_ROOT = "/home/marialuiza/Documents/faculdade/9periodo/poc/git_repo"
+        project_path = os.path.join(REPO_ROOT, user_id, project_id)
+        dvc_yaml_path = os.path.join(project_path, "dvc.yaml")
+        
+        if not os.path.exists(dvc_yaml_path):
+            return {
+                "models": [],
+                "evaluation_stage": None,
+                "metrics_path": None,
+                "error": "dvc.yaml not found"
+            }
+        
+        with open(dvc_yaml_path, 'r') as f:
+            dvc_config = yaml.safe_load(f)
+        
+        models = []
+        evaluation_stage = None
+        metrics_path = None
+        
+        # Extract model outputs from stages
+        if 'stages' in dvc_config:
+            for stage_name, stage_config in dvc_config['stages'].items():
+                if 'outs' in stage_config:
+                    for output in stage_config['outs']:
+                        # Check if output is a model file
+                        if isinstance(output, str) and any(output.endswith(ext) for ext in ['.pkl', '.joblib', '.h5', '.hdf5', '.pb', '.onnx', '.pt', '.pth', '.model', '.bin']):
+                            models.append({
+                                "path": output,
+                                "stage": stage_name,
+                                "stage_config": stage_config
+                            })
+                
+                # Check if this is an evaluation stage
+                if stage_name.lower() in ['evaluate', 'eval', 'evaluation']:
+                    evaluation_stage = {
+                        "name": stage_name,
+                        "config": stage_config
+                    }
+        
+        # Extract metrics path
+        if 'metrics' in dvc_config and dvc_config['metrics']:
+            metrics_path = dvc_config['metrics'][0] if isinstance(dvc_config['metrics'], list) else dvc_config['metrics']
+        
+        return {
+            "models": models,
+            "evaluation_stage": evaluation_stage,
+            "metrics_path": metrics_path,
+            "error": None
+        }
+        
+    except Exception as e:
+        return {
+            "models": [],
+            "evaluation_stage": None,
+            "metrics_path": None,
+            "error": str(e)
+        }
+
+# Helper function to run DVC evaluation stage
+async def run_dvc_evaluation(user_id: str, project_id: str, model_path: str) -> Dict[str, Any]:
+    """
+    Run the evaluation stage from dvc.yaml for a specific model.
+    """
+    try:
+        REPO_ROOT = "/home/marialuiza/Documents/faculdade/9periodo/poc/git_repo"
+        project_path = os.path.join(REPO_ROOT, user_id, project_id)
+        
+        # Get DVC configuration
+        dvc_config = await get_model_paths_from_dvc(user_id, project_id)
+        
+        if dvc_config["error"]:
+            return {
+                "success": False,
+                "error": dvc_config["error"],
+                "metrics": {},
+                "logs": []
+            }
+        
+        if not dvc_config["evaluation_stage"]:
+            return {
+                "success": False,
+                "error": "No evaluation stage found in dvc.yaml",
+                "metrics": {},
+                "logs": []
+            }
+        
+        # Run DVC repro for the evaluation stage
+        from app.dvc_handler import repro
+        
+        result = await repro(
+            user_id=user_id,
+            project_id=project_id,
+            target=dvc_config["evaluation_stage"]["name"],
+            pipeline=False,
+            force=True
+        )
+        
+        # Read metrics from the metrics file
+        metrics = {}
+        if dvc_config["metrics_path"]:
+            metrics_file = os.path.join(project_path, dvc_config["metrics_path"])
+            if os.path.exists(metrics_file):
+                try:
+                    with open(metrics_file, 'r') as f:
+                        metrics = json.load(f)
+                except Exception as e:
+                    metrics = {"error": f"Failed to read metrics: {str(e)}"}
+        
+        return {
+            "success": True,
+            "error": None,
+            "metrics": metrics,
+            "logs": [result] if result else [],
+            "dvc_result": result
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "metrics": {},
+            "logs": [f"Error running DVC evaluation: {str(e)}"]
+        }

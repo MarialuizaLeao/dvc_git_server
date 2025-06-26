@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-__all__ = ['init_db', 'close_db', 'get_database', 'get_users_collection', 'get_projects_collection', 'get_pipeline_configs_collection', 'get_data_sources_collection', 'get_remote_storages_collection', 'get_code_files_collection', 'get_models_collection', 'get_pipeline_executions_collection']
+__all__ = ['init_db', 'close_db', 'get_database', 'get_users_collection', 'get_projects_collection', 'get_pipeline_configs_collection', 'get_data_sources_collection', 'get_remote_storages_collection', 'get_code_files_collection', 'get_models_collection', 'get_pipeline_executions_collection', 'get_model_paths_collection', 'get_model_evaluations_collection']
 
 # MongoDB connection string from environment variable
 MONGODB_URL = os.getenv('MONGODB_URL')
@@ -26,6 +26,8 @@ remote_storages_collection = None
 code_files_collection = None
 models_collection = None
 pipeline_executions_collection = None
+model_paths_collection = None
+model_evaluations_collection = None
 
 async def init_if_needed():
     """Initialize database if not already initialized"""
@@ -85,9 +87,21 @@ async def get_pipeline_executions_collection():
     global pipeline_executions_collection
     return pipeline_executions_collection
 
+async def get_model_paths_collection():
+    """Get model paths collection"""
+    await init_if_needed()
+    global model_paths_collection
+    return model_paths_collection
+
+async def get_model_evaluations_collection():
+    """Get model evaluations collection"""
+    await init_if_needed()
+    global model_evaluations_collection
+    return model_evaluations_collection
+
 async def init_db():
     """Initialize database connection"""
-    global client, db, users_collection, projects_collection, pipeline_configs_collection, data_sources_collection, remote_storages_collection, code_files_collection, models_collection, pipeline_executions_collection
+    global client, db, users_collection, projects_collection, pipeline_configs_collection, data_sources_collection, remote_storages_collection, code_files_collection, models_collection, pipeline_executions_collection, model_paths_collection, model_evaluations_collection
     
     try:
         # Create a new client and connect to the server
@@ -124,6 +138,8 @@ async def init_db():
         code_files_collection = db.get_collection("code_files")
         models_collection = db.get_collection("models")
         pipeline_executions_collection = db.get_collection("pipeline_executions")
+        model_paths_collection = db.get_collection("model_paths")
+        model_evaluations_collection = db.get_collection("model_evaluations")
         print("Collections initialized successfully")
         
         # Initialize collections if they don't exist
@@ -144,6 +160,10 @@ async def init_db():
             await db.create_collection("models")
         if "pipeline_executions" not in collections:
             await db.create_collection("pipeline_executions")
+        if "model_paths" not in collections:
+            await db.create_collection("model_paths")
+        if "model_evaluations" not in collections:
+            await db.create_collection("model_evaluations")
             
         print("Database and collections initialized successfully")
         
@@ -173,6 +193,8 @@ async def init_db():
             code_files_collection = db.get_collection("code_files")
             models_collection = db.get_collection("models")
             pipeline_executions_collection = db.get_collection("pipeline_executions")
+            model_paths_collection = db.get_collection("model_paths")
+            model_evaluations_collection = db.get_collection("model_evaluations")
             print("Local database and collections initialized successfully")
             
         except Exception as local_e:
@@ -188,11 +210,13 @@ async def init_db():
             code_files_collection = None
             models_collection = None
             pipeline_executions_collection = None
+            model_paths_collection = None
+            model_evaluations_collection = None
             raise e
 
 async def close_db():
     """Close database connection"""
-    global client, db, users_collection, projects_collection, pipeline_configs_collection, data_sources_collection, remote_storages_collection, code_files_collection, models_collection, pipeline_executions_collection
+    global client, db, users_collection, projects_collection, pipeline_configs_collection, data_sources_collection, remote_storages_collection, code_files_collection, models_collection, pipeline_executions_collection, model_paths_collection, model_evaluations_collection
     if client:
         client.close()
     client = None
@@ -205,3 +229,5 @@ async def close_db():
     code_files_collection = None
     models_collection = None
     pipeline_executions_collection = None
+    model_paths_collection = None
+    model_evaluations_collection = None

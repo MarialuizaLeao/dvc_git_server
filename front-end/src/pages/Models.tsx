@@ -3,48 +3,86 @@ import { useParams } from 'react-router-dom';
 import { CURRENT_USER } from '../constants/user';
 import Card from '../components/Card';
 import {
-    TbUpload,
     TbDownload,
     TbEye,
     TbTrash,
     TbFile,
     TbCalendar,
-    TbScale,
     TbBrain,
-    TbChartLine
+    TbSettings,
+    TbPlayerPlay,
+    TbClock,
+    TbCheck,
+    TbX,
+    TbChartLine,
+    TbChartBar,
+    TbActivity
 } from 'react-icons/tb';
 import { modelApi } from '../services/api';
-import type { Model, ModelListResponse } from '../types/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type {
+    Model,
+    ModelListResponse,
+    ModelPathConfig,
+    CreateModelPathRequest,
+    UpdateModelPathRequest,
+    ModelEvaluation,
+    CreateEvaluationRequest,
+    ProjectModelFile,
+    ProjectModelFilesResponse
+} from '../types/api';
 
 export default function Models() {
     const { id: projectId } = useParams<{ id: string }>();
     const userId = CURRENT_USER.id;
-    const [models, setModels] = useState<Model[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [uploadModalOpen, setUploadModalOpen] = useState(false);
+    const [pathModalOpen, setPathModalOpen] = useState(false);
     const [selectedModel, setSelectedModel] = useState<Model | null>(null);
     const [viewModalOpen, setViewModalOpen] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const [uploadError, setUploadError] = useState<string | null>(null);
-    const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+    const [evaluating, setEvaluating] = useState<string | null>(null);
+    const [selectedEvaluation, setSelectedEvaluation] = useState<ModelEvaluation | null>(null);
 
-    // Fetch models from backend
-    useEffect(() => {
-        if (!userId || !projectId) return;
-        setLoading(true);
-        setError(null);
-        modelApi.getModels(userId, projectId)
-            .then((res: ModelListResponse) => {
-                setModels(res.models);
-                setLoading(false);
-            })
-            .catch((err) => {
-                setError(err.message || 'Failed to fetch models');
-                setLoading(false);
-            });
-    }, [userId, projectId]);
+    const queryClient = useQueryClient();
+
+    // Fetch models
+    const { data: modelsData, isLoading: modelsLoading } = useQuery({
+        queryKey: ['models', userId, projectId],
+        queryFn: () => modelApi.getModels(userId, projectId!),
+        enabled: !!userId && !!projectId
+    });
+
+    // Fetch model paths
+    const { data: modelPathsData, isLoading: pathsLoading } = useQuery({
+        queryKey: ['model-paths', userId, projectId],
+        queryFn: () => modelApi.getModelPaths(userId, projectId!),
+        enabled: !!userId && !!projectId
+    });
+
+    // Fetch evaluations
+    const evaluationsQuery = useQuery({
+        queryKey: ['evaluations', userId, projectId],
+        queryFn: () => modelApi.getModelEvaluations(userId, projectId!),
+        enabled: !!userId && !!projectId
+    });
+
+    // Mutations
+    const createEvaluationMutation = useMutation({
+        mutationFn: (data: CreateEvaluationRequest) => modelApi.createModelEvaluation(userId, projectId!, data),
+        onSuccess: () => {
+            evaluationsQuery.refetch();
+        }
+    });
+
+    const deleteModelMutation = useMutation({
+        mutationFn: (modelId: string) => modelApi.deleteModel(userId, projectId!, modelId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['models', userId, projectId] });
+        }
+    });
+
+    const models = modelsData?.models || [];
+    const modelPaths = modelPathsData?.model_paths || [];
+    const evaluations = evaluationsQuery.data?.model_evaluations || [];
 
     const formatFileSize = (bytes: number): string => {
         if (bytes === 0) return '0 Bytes';
@@ -72,36 +110,34 @@ export default function Models() {
                 return 'bg-gray-100 text-gray-800';
             case 'training':
                 return 'bg-blue-100 text-blue-800';
+            case 'completed':
+                return 'bg-green-100 text-green-800';
+            case 'running':
+                return 'bg-blue-100 text-blue-800';
+            case 'failed':
+                return 'bg-red-100 text-red-800';
             default:
                 return 'bg-gray-100 text-gray-800';
         }
     };
 
-    const handleUploadModel = () => {
-        setUploadModalOpen(true);
-        setUploadError(null);
-        setUploadSuccess(null);
+    const handleDeleteModelPath = async (pathId: string) => {
+        // Model paths from DVC pipeline cannot be deleted manually
+        console.log('Model paths from DVC pipeline cannot be deleted manually');
     };
 
-    const handleUploadSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setUploading(true);
-        setUploadError(null);
-        setUploadSuccess(null);
-        const form = e.currentTarget;
-        const formData = new FormData(form);
+    const handleCreateEvaluation = async (modelPath: string) => {
+        setEvaluating(modelPath);
         try {
-            await modelApi.uploadModel(userId, projectId!, formData);
-            setUploadSuccess('Model uploaded successfully!');
-            setUploadModalOpen(false);
-            // Refresh models
-            setLoading(true);
-            const res = await modelApi.getModels(userId, projectId!);
-            setModels(res.models);
-        } catch (err: any) {
-            setUploadError(err.message || 'Failed to upload model');
+            await createEvaluationMutation.mutateAsync({
+                model_path: modelPath
+            });
+            // Refetch evaluations
+            evaluationsQuery.refetch();
+        } catch (error) {
+            console.error('Error creating evaluation:', error);
         } finally {
-            setUploading(false);
+            setEvaluating(null);
         }
     };
 
@@ -112,8 +148,7 @@ export default function Models() {
 
     const handleDownloadModel = async (model: Model) => {
         try {
-            const res = await modelApi.downloadModel(userId, projectId!, model._id);
-            // For now, just open the file path in a new tab (if served statically)
+            const res = await modelApi.downloadModel(userId, projectId!, model.id!);
             window.open(`/static/${res.file_path}`, '_blank');
         } catch (err: any) {
             alert(err.message || 'Failed to download model');
@@ -122,10 +157,9 @@ export default function Models() {
 
     const handleDeleteModel = async (model: Model) => {
         if (!window.confirm(`Are you sure you want to delete ${model.name}?`)) return;
-        setDeleteLoading(model._id);
+        setDeleteLoading(model.id!);
         try {
-            await modelApi.deleteModel(userId, projectId!, model._id);
-            setModels(models.filter(m => m._id !== model._id));
+            await deleteModelMutation.mutateAsync(model.id!);
         } catch (err: any) {
             alert(err.message || 'Failed to delete model');
         } finally {
@@ -133,17 +167,57 @@ export default function Models() {
         }
     };
 
-    if (loading) {
+    const renderMetricValue = (value: any) => {
+        if (typeof value === 'number') {
+            return value.toFixed(4);
+        } else if (typeof value === 'object' && value !== null) {
+            return (
+                <div className="space-y-1">
+                    {Object.entries(value).map(([k, v]) => (
+                        <div key={k} className="text-xs">
+                            <span className="font-medium">{k}:</span> {typeof v === 'number' ? v.toFixed(4) : String(v)}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        return String(value);
+    };
+
+    const renderEvaluationPlots = (evaluation: ModelEvaluation) => {
+        // This would be populated with actual plot data from the backend
+        // For now, showing a placeholder
+        return (
+            <div className="mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Evaluation Plots</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 p-4 rounded-lg border">
+                        <div className="flex items-center space-x-2 mb-2">
+                            <TbChartLine className="h-4 w-4 text-blue-600" />
+                            <span className="text-sm font-medium">Accuracy Over Time</span>
+                        </div>
+                        <div className="h-32 bg-white rounded border flex items-center justify-center text-gray-500 text-sm">
+                            Plot visualization would appear here
+                        </div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg border">
+                        <div className="flex items-center space-x-2 mb-2">
+                            <TbChartBar className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-medium">Metrics Comparison</span>
+                        </div>
+                        <div className="h-32 bg-white rounded border flex items-center justify-center text-gray-500 text-sm">
+                            Plot visualization would appear here
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    if (modelsLoading) {
         return (
             <div className="flex items-center justify-center h-64">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-        );
-    }
-    if (error) {
-        return (
-            <div className="flex items-center justify-center h-64 text-red-600 font-semibold">
-                {error}
             </div>
         );
     }
@@ -158,323 +232,248 @@ export default function Models() {
                         Manage and track your trained machine learning models
                     </p>
                 </div>
-                <button
-                    onClick={handleUploadModel}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                    <TbUpload className="w-4 h-4 mr-2" />
-                    Upload Model
-                </button>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card title="Total Models">
-                    <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                            <TbBrain className="h-8 w-8 text-blue-600" />
+            {/* Content */}
+            <div className="space-y-6">
+                {/* Current Model Results */}
+                <Card title="Current Model Results">
+                    {pathsLoading ? (
+                        <div className="flex items-center justify-center h-32">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
                         </div>
-                        <div className="ml-4">
-                            <p className="text-sm font-medium text-gray-500">Total Models</p>
-                            <p className="text-2xl font-semibold text-gray-900">{models.length}</p>
+                    ) : modelPaths.length > 0 ? (
+                        <div className="space-y-6">
+                            {modelPaths.map((path) => {
+                                const latestEvaluation = evaluations
+                                    .filter(e => e.model_path === path.model_path)
+                                    .sort((a, b) => new Date(b.evaluation_date).getTime() - new Date(a.evaluation_date).getTime())[0];
+
+                                return (
+                                    <div key={path._id} className="border border-gray-200 rounded-lg p-6">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex-1">
+                                                <h3 className="text-xl font-semibold text-gray-900">{path.model_name}</h3>
+                                                <p className="text-sm text-gray-600 mt-1">{path.model_path}</p>
+                                                {path.description && (
+                                                    <p className="text-sm text-gray-500 mt-2">{path.description}</p>
+                                                )}
+                                            </div>
+                                            <div className="flex flex-col items-end space-y-3">
+                                                <button
+                                                    onClick={() => setSelectedEvaluation(latestEvaluation)}
+                                                    className="text-blue-600 hover:text-blue-800 text-sm font-medium self-end"
+                                                    style={{ visibility: latestEvaluation ? 'visible' : 'hidden' }}
+                                                >
+                                                    View Details
+                                                </button>
+                                                {!path.model_name.toLowerCase().includes('train') && !path.model_path.toLowerCase().includes('train') && (
+                                                    <button
+                                                        onClick={() => handleCreateEvaluation(path.model_path)}
+                                                        disabled={evaluating === path.model_path}
+                                                        className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
+                                                    >
+                                                        {evaluating === path.model_path ? (
+                                                            <>
+                                                                <TbClock className="h-4 w-4 mr-2" />
+                                                                Running...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <TbPlayerPlay className="h-4 w-4 mr-2" />
+                                                                Evaluate
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {latestEvaluation ? (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center space-x-3">
+                                                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(latestEvaluation.status)}`}>
+                                                            {latestEvaluation.status}
+                                                        </span>
+                                                        <span className="text-sm text-gray-600">
+                                                            Last evaluated: {formatDate(latestEvaluation.evaluation_date)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {latestEvaluation.metrics && Object.keys(latestEvaluation.metrics).length > 0 && (
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                        {Object.entries(latestEvaluation.metrics).map(([key, value]) => (
+                                                            <div key={key} className="bg-gray-50 p-3 rounded-lg">
+                                                                <div className="text-sm text-gray-600 mb-1">{key}</div>
+                                                                <div className="text-xl font-semibold text-gray-900">
+                                                                    {renderMetricValue(value)}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {latestEvaluation.error_message && (
+                                                    <div className="bg-red-50 p-3 rounded-lg">
+                                                        <h4 className="text-sm font-medium text-red-700 mb-1">Error:</h4>
+                                                        <div className="text-sm text-red-600">{latestEvaluation.error_message}</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-8 text-gray-500">
+                                                <TbActivity className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                                                <p>No evaluation results yet.</p>
+                                                <p className="text-sm mt-1">Run an evaluation to see model performance metrics.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
-                    </div>
-                </Card>
-                <Card title="Active Models">
-                    <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                            <TbScale className="h-8 w-8 text-green-600" />
+                    ) : (
+                        <div className="text-center py-8 text-gray-500">
+                            <TbBrain className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                            <p>No model paths found in DVC pipeline.</p>
+                            <p className="text-sm mt-1">Configure your DVC pipeline to include model outputs.</p>
                         </div>
-                        <div className="ml-4">
-                            <p className="text-sm font-medium text-gray-500">Active Models</p>
-                            <p className="text-2xl font-semibold text-gray-900">
-                                {models.filter(m => m.status === 'active').length}
-                            </p>
-                        </div>
-                    </div>
-                </Card>
-                <Card title="Avg Accuracy">
-                    <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                            <TbChartLine className="h-8 w-8 text-purple-600" />
-                        </div>
-                        <div className="ml-4">
-                            <p className="text-sm font-medium text-gray-500">Avg Accuracy</p>
-                            <p className="text-2xl font-semibold text-gray-900">
-                                {models.length > 0
-                                    ? Math.round(models.reduce((acc, m) => acc + (m.metrics?.accuracy || 0), 0) / models.length * 100)
-                                    : 0}%
-                            </p>
-                        </div>
-                    </div>
-                </Card>
-                <Card title="Total Size">
-                    <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                            <TbFile className="h-8 w-8 text-orange-600" />
-                        </div>
-                        <div className="ml-4">
-                            <p className="text-sm font-medium text-gray-500">Total Size</p>
-                            <p className="text-2xl font-semibold text-gray-900">
-                                {formatFileSize(models.reduce((acc, m) => acc + m.file_size, 0))}
-                            </p>
-                        </div>
-                    </div>
+                    )}
                 </Card>
             </div>
 
-            {/* Models List */}
-            <Card title="Trained Models">
-                <div className="divide-y divide-gray-200">
-                    {models.length === 0 ? (
-                        <div className="px-6 py-12 text-center">
-                            <TbBrain className="mx-auto h-12 w-12 text-gray-400" />
-                            <h3 className="mt-2 text-sm font-medium text-gray-900">No models</h3>
-                            <p className="mt-1 text-sm text-gray-500">
-                                Get started by uploading your first trained model.
-                            </p>
-                            <div className="mt-6">
+            {/* Model Path Modal */}
+            {pathModalOpen && (
+                <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+                    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                        <div className="mt-3">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">
+                                DVC Pipeline Configuration
+                            </h3>
+                            <div className="space-y-4">
+                                {modelPathsData?.error ? (
+                                    <div className="text-red-600 text-sm">
+                                        <p><strong>Error:</strong> {modelPathsData.error}</p>
+                                        <p className="mt-2">Make sure your project has a valid dvc.yaml file with model outputs defined in the pipeline stages.</p>
+                                    </div>
+                                ) : modelPathsData?.evaluation_stage ? (
+                                    <div className="space-y-3">
+                                        <div>
+                                            <h4 className="font-medium text-gray-900">Evaluation Stage</h4>
+                                            <p className="text-sm text-gray-600">{modelPathsData.evaluation_stage.name}</p>
+                                        </div>
+                                        {modelPathsData.metrics_path && (
+                                            <div>
+                                                <h4 className="font-medium text-gray-900">Metrics Path</h4>
+                                                <p className="text-sm text-gray-600">{modelPathsData.metrics_path}</p>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <h4 className="font-medium text-gray-900">Available Models</h4>
+                                            <div className="space-y-2">
+                                                {modelPaths.map((path) => (
+                                                    <div key={path._id} className="text-sm text-gray-600 p-2 bg-gray-50 rounded">
+                                                        <strong>{path.model_name}</strong><br />
+                                                        Path: {path.model_path}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-yellow-600 text-sm">
+                                        <p>No evaluation stage found in dvc.yaml.</p>
+                                        <p className="mt-2">Add an evaluation stage to your DVC pipeline to enable model evaluation.</p>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="mt-6 flex justify-end">
                                 <button
-                                    onClick={handleUploadModel}
-                                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                    onClick={() => setPathModalOpen(false)}
+                                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
                                 >
-                                    <TbUpload className="w-4 h-4 mr-2" />
-                                    Upload Model
+                                    Close
                                 </button>
                             </div>
                         </div>
-                    ) : (
-                        models.map((model) => (
-                            <div key={model._id} className="px-6 py-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-4">
-                                        <div className="flex-shrink-0">
-                                            <TbBrain className="h-8 w-8 text-blue-600" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center space-x-2">
-                                                <h4 className="text-sm font-medium text-gray-900 truncate">
-                                                    {model.name}
-                                                </h4>
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(model.status)}`}>
-                                                    {model.status}
-                                                </span>
-                                            </div>
-                                            <p className="text-sm text-gray-500 truncate">
-                                                {model.description || `${model.framework} ${model.model_type} model`}
-                                            </p>
-                                            <div className="flex items-center space-x-4 mt-1 text-xs text-gray-400">
-                                                <span className="flex items-center">
-                                                    <TbFile className="w-3 h-3 mr-1" />
-                                                    {model.filename}
-                                                </span>
-                                                <span className="flex items-center">
-                                                    <TbCalendar className="w-3 h-3 mr-1" />
-                                                    {formatDate(model.created_at)}
-                                                </span>
-                                                <span>{formatFileSize(model.file_size)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        {model.metrics?.accuracy && (
-                                            <div className="text-right">
-                                                <p className="text-sm font-medium text-gray-900">
-                                                    {Math.round(model.metrics.accuracy * 100)}%
-                                                </p>
-                                                <p className="text-xs text-gray-500">Accuracy</p>
-                                            </div>
-                                        )}
-                                        <div className="flex space-x-1">
-                                            <button
-                                                onClick={() => handleViewModel(model)}
-                                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
-                                                title="View details"
-                                            >
-                                                <TbEye className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDownloadModel(model)}
-                                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
-                                                title="Download model"
-                                            >
-                                                <TbDownload className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteModel(model)}
-                                                className={`p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md ${deleteLoading === model._id ? 'opacity-50 pointer-events-none' : ''}`}
-                                                title="Delete model"
-                                                disabled={deleteLoading === model._id}
-                                            >
-                                                {deleteLoading === model._id ? (
-                                                    <span className="animate-spin w-4 h-4 border-b-2 border-red-600 rounded-full inline-block"></span>
-                                                ) : (
-                                                    <TbTrash className="w-4 h-4" />
-                                                )}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </Card>
-
-            {/* Upload Modal */}
-            {uploadModalOpen && (
-                <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-                    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-                        <form onSubmit={handleUploadSubmit} className="mt-3">
-                            <h3 className="text-lg font-medium text-gray-900 mb-4">Upload Model</h3>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">
-                                        Model Name
-                                    </label>
-                                    <input
-                                        name="name"
-                                        type="text"
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Enter model name"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">
-                                        Description
-                                    </label>
-                                    <textarea
-                                        name="description"
-                                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                                        rows={3}
-                                        placeholder="Enter model description"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">
-                                        Model File
-                                    </label>
-                                    <input
-                                        name="file"
-                                        type="file"
-                                        accept=".pkl,.joblib,.h5,.pb,.onnx"
-                                        className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                                        required
-                                    />
-                                </div>
-                                {/* Add more fields as needed for type, framework, version, metrics, parameters */}
-                                <div className="flex justify-end space-x-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setUploadModalOpen(false)}
-                                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                                        disabled={uploading}
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
-                                        disabled={uploading}
-                                    >
-                                        {uploading ? 'Uploading...' : 'Upload'}
-                                    </button>
-                                </div>
-                                {uploadError && <div className="text-red-600 text-sm">{uploadError}</div>}
-                                {uploadSuccess && <div className="text-green-600 text-sm">{uploadSuccess}</div>}
-                            </div>
-                        </form>
                     </div>
                 </div>
             )}
 
-            {/* View Model Modal */}
-            {viewModalOpen && selectedModel && (
+            {/* Evaluation Details Modal */}
+            {selectedEvaluation && (
                 <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-                    <div className="relative top-10 mx-auto p-5 border w-3/4 max-w-4xl shadow-lg rounded-md bg-white">
-                        <div className="mt-3">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-medium text-gray-900">{selectedModel.name}</h3>
-                                <button
-                                    onClick={() => setViewModalOpen(false)}
-                                    className="text-gray-400 hover:text-gray-600"
-                                >
-                                    ×
-                                </button>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <h4 className="text-sm font-medium text-gray-900 mb-3">Model Information</h4>
-                                    <dl className="space-y-2">
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Filename</dt>
-                                            <dd className="text-sm text-gray-900">{selectedModel.filename}</dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Framework</dt>
-                                            <dd className="text-sm text-gray-900">{selectedModel.framework}</dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Model Type</dt>
-                                            <dd className="text-sm text-gray-900">{selectedModel.model_type}</dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Version</dt>
-                                            <dd className="text-sm text-gray-900">{selectedModel.version}</dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">File Size</dt>
-                                            <dd className="text-sm text-gray-900">{formatFileSize(selectedModel.file_size)}</dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Created</dt>
-                                            <dd className="text-sm text-gray-900">{formatDate(selectedModel.created_at)}</dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-sm font-medium text-gray-500">Description</dt>
-                                            <dd className="text-sm text-gray-900">{selectedModel.description || 'No description provided'}</dd>
-                                        </div>
-                                    </dl>
+                    <div className="relative top-10 mx-auto p-6 border w-4/5 max-w-4xl shadow-lg rounded-md bg-white">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold text-gray-900">
+                                Evaluation Details
+                            </h3>
+                            <button
+                                onClick={() => setSelectedEvaluation(null)}
+                                className="text-gray-400 hover:text-gray-600"
+                            >
+                                <TbX className="h-6 w-6" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-6">
+                            {/* Evaluation Header */}
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                <div className="flex items-center space-x-4">
+                                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(selectedEvaluation.status)}`}>
+                                        {selectedEvaluation.status}
+                                    </span>
+                                    <div>
+                                        <h4 className="font-medium text-gray-900">{selectedEvaluation.model_path}</h4>
+                                        <p className="text-sm text-gray-600">{formatDate(selectedEvaluation.evaluation_date)}</p>
+                                    </div>
                                 </div>
+                            </div>
+
+                            {/* Metrics */}
+                            {selectedEvaluation.metrics && Object.keys(selectedEvaluation.metrics).length > 0 && (
                                 <div>
-                                    <h4 className="text-sm font-medium text-gray-900 mb-3">Performance Metrics</h4>
-                                    {selectedModel.metrics ? (
-                                        <div className="space-y-3">
-                                            {Object.entries(selectedModel.metrics).map(([key, value]) => (
-                                                <div key={key} className="flex justify-between items-center">
-                                                    <span className="text-sm font-medium text-gray-500 capitalize">
-                                                        {key.replace('_', ' ')}
-                                                    </span>
-                                                    <span className="text-sm text-gray-900">
-                                                        {typeof value === 'number' && key !== 'loss'
-                                                            ? `${Math.round(value * 100)}%`
-                                                            : value}
-                                                    </span>
+                                    <h4 className="text-lg font-medium text-gray-900 mb-3">Metrics</h4>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        {Object.entries(selectedEvaluation.metrics).map(([key, value]) => (
+                                            <div key={key} className="bg-gray-50 p-4 rounded-lg">
+                                                <div className="text-sm text-gray-600 mb-2">{key}</div>
+                                                <div className="text-xl font-semibold text-gray-900">
+                                                    {renderMetricValue(value)}
                                                 </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Plots */}
+                            {renderEvaluationPlots(selectedEvaluation)}
+
+                            {/* Logs */}
+                            {selectedEvaluation.evaluation_logs && selectedEvaluation.evaluation_logs.length > 0 && (
+                                <div>
+                                    <h4 className="text-lg font-medium text-gray-900 mb-3">Evaluation Logs</h4>
+                                    <div className="bg-gray-50 p-4 rounded-lg max-h-64 overflow-y-auto">
+                                        <div className="space-y-1 text-sm text-gray-700 font-mono">
+                                            {selectedEvaluation.evaluation_logs.map((log, index) => (
+                                                <div key={index} className="py-1">{log}</div>
                                             ))}
                                         </div>
-                                    ) : (
-                                        <p className="text-sm text-gray-500">No metrics available</p>
-                                    )}
-
-                                    {selectedModel.parameters && (
-                                        <>
-                                            <h4 className="text-sm font-medium text-gray-900 mb-3 mt-6">Model Parameters</h4>
-                                            <div className="space-y-2">
-                                                {Object.entries(selectedModel.parameters).map(([key, value]) => (
-                                                    <div key={key} className="flex justify-between items-center">
-                                                        <span className="text-sm font-medium text-gray-500 capitalize">
-                                                            {key.replace('_', ' ')}
-                                                        </span>
-                                                        <span className="text-sm text-gray-900">{value}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
+
+                            {/* Error */}
+                            {selectedEvaluation.error_message && (
+                                <div>
+                                    <h4 className="text-lg font-medium text-red-700 mb-3">Error</h4>
+                                    <div className="bg-red-50 p-4 rounded-lg">
+                                        <div className="text-sm text-red-600">{selectedEvaluation.error_message}</div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { User, Project, CreateProjectRequest, CreateExperimentData, Pipeline, CreatePipelineRequest, UpdatePipelineRequest, PipelineExecutionRequest, PipelineExecutionResponse, PipelineRecoveryResponse, DataSource, CreateDataSourceRequest, UpdateDataSourceRequest, RemoteStorage, CreateRemoteRequest, TrackDataRequest, GetUrlRequest, SetRemoteRequest, DataOperationResponse, DvcStatus, PipelineExecutionListResponse, PipelineExecution, ModelListResponse, Model, ModelCreate, ModelUploadResponse, ModelComparisonResult, ProjectModelFilesResponse } from '../types/api';
+import type { User, Project, CreateProjectRequest, CreateExperimentData, Pipeline, CreatePipelineRequest, UpdatePipelineRequest, PipelineExecutionRequest, PipelineExecutionResponse, PipelineRecoveryResponse, DataSource, CreateDataSourceRequest, UpdateDataSourceRequest, RemoteStorage, CreateRemoteRequest, TrackDataRequest, GetUrlRequest, SetRemoteRequest, DataOperationResponse, DvcStatus, PipelineExecutionListResponse, PipelineExecution, ModelListResponse, Model, ModelCreate, ModelUploadResponse, ModelComparisonResult, ProjectModelFilesResponse, ModelPathConfig, CreateModelPathRequest, UpdateModelPathRequest, ModelEvaluation, CreateEvaluationRequest } from '../types/api';
 
 // Create axios instance
 const api = axios.create({
@@ -502,6 +502,66 @@ export const modelApi = {
         );
         return response.data;
     },
+
+    // Model Path Configuration API
+    getModelPaths: async (userId: string, projectId: string) => {
+        const response = await api.get<{
+            model_paths: ModelPathConfig[];
+            evaluation_stage: any;
+            metrics_path: string | null;
+            error: string | null;
+            exists: boolean
+        }>(
+            `/${userId}/${projectId}/model-paths`
+        );
+        return response.data;
+    },
+
+    createModelPath: async (userId: string, projectId: string, data: CreateModelPathRequest) => {
+        const response = await api.post<{ message: string; model_path: ModelPathConfig }>(
+            `/${userId}/${projectId}/model-paths`,
+            data
+        );
+        return response.data;
+    },
+
+    updateModelPath: async (userId: string, projectId: string, pathId: string, data: UpdateModelPathRequest) => {
+        const response = await api.put<{ message: string }>(
+            `/${userId}/${projectId}/model-paths/${pathId}`,
+            data
+        );
+        return response.data;
+    },
+
+    deleteModelPath: async (userId: string, projectId: string, pathId: string) => {
+        const response = await api.delete<{ message: string }>(
+            `/${userId}/${projectId}/model-paths/${pathId}`
+        );
+        return response.data;
+    },
+
+    // Model Evaluation API
+    getModelEvaluations: async (userId: string, projectId: string) => {
+        const response = await api.get<{ model_evaluations: ModelEvaluation[]; total_count: number }>(
+            `/${userId}/${projectId}/model-evaluations`
+        );
+        return response.data;
+    },
+
+    createModelEvaluation: async (userId: string, projectId: string, data: CreateEvaluationRequest) => {
+        const response = await api.post<{ message: string; evaluation: ModelEvaluation }>(
+            `/${userId}/${projectId}/evaluations`,
+            data
+        );
+        return response.data;
+    },
+
+    getModelEvaluation: async (userId: string, projectId: string, evaluationId: string) => {
+        const response = await api.get<ModelEvaluation>(
+            `/${userId}/${projectId}/evaluations/${evaluationId}`
+        );
+        return response.data;
+    },
 };
 
-export default api; 
+export default api;

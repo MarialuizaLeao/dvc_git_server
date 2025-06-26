@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Literal
 from datetime import datetime
 from enum import Enum
 from bson import ObjectId
@@ -620,3 +620,47 @@ class ProjectModelFile(BaseModel):
 class ProjectModelFilesResponse(BaseModel):
     files: List[ProjectModelFile]
     total_count: int
+
+# Model Path Configuration classes
+class CreateModelPathRequest(BaseModel):
+    model_path: str  # e.g., "models/model.pkl" or "models/"
+    model_name: str
+    description: Optional[str] = None
+
+class UpdateModelPathRequest(BaseModel):
+    model_path: Optional[str] = None
+    model_name: Optional[str] = None
+    description: Optional[str] = None
+
+class ModelPathConfig(BaseModel):
+    _id: str
+    user_id: str
+    project_id: str
+    model_path: str  # Path relative to project root
+    model_name: str
+    description: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+# Model Evaluation classes
+class CreateEvaluationRequest(BaseModel):
+    model_path: str
+
+class ModelEvaluation(BaseModel):
+    _id: str
+    user_id: str
+    project_id: str
+    model_path: str
+    evaluation_date: str
+    metrics: Dict[str, float]
+    evaluation_logs: List[str]
+    status: Literal["running", "completed", "failed"]
+    error_message: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+class EvaluationResult(BaseModel):
+    message: str
+    evaluation_id: str
+    metrics: Dict[str, float]
+    logs: List[str]

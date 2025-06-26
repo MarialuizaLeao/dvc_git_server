@@ -5,15 +5,15 @@ import { useProjects } from '../hooks/useProjects';
 import { CURRENT_USER } from '../constants/user';
 import Card from '../components/Card';
 import PipelineConfigModal from '../components/PipelineConfigModal';
-import { pipelineExecutionApi, modelApi } from '../services/api';
+import { pipelineExecutionApi } from '../services/api';
 import { useQuery } from '@tanstack/react-query';
-import type { Pipeline, PipelineExecutionRequest, PipelineExecution, Model, ProjectModelFile } from '../types/api';
+import type { Pipeline, PipelineExecutionRequest, PipelineExecution } from '../types/api';
 
 export default function Pipeline() {
     const { id: projectId } = useParams();
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
-    const [activeTab, setActiveTab] = useState<'overview' | 'executions' | 'models'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'executions'>('overview');
 
     const { getProject } = useProjects(CURRENT_USER.id);
     const { data: project, isLoading: projectLoading } = getProject(projectId || '');
@@ -34,20 +34,6 @@ export default function Pipeline() {
         queryKey: ['pipeline-executions', CURRENT_USER.id, projectId],
         queryFn: () => pipelineExecutionApi.getExecutions(CURRENT_USER.id, projectId || ''),
         enabled: !!projectId && activeTab === 'executions'
-    });
-
-    // Fetch models
-    const { data: models, isLoading: modelsLoading } = useQuery({
-        queryKey: ['models', CURRENT_USER.id, projectId],
-        queryFn: () => modelApi.getModels(CURRENT_USER.id, projectId || ''),
-        enabled: !!projectId && activeTab === 'models'
-    });
-
-    // Fetch project model files
-    const { data: projectModelFiles, isLoading: projectModelFilesLoading } = useQuery({
-        queryKey: ['project-model-files', CURRENT_USER.id, projectId],
-        queryFn: () => modelApi.getProjectModelFiles(CURRENT_USER.id, projectId || ''),
-        enabled: !!projectId && activeTab === 'models'
     });
 
     const createPipelineMutation = createPipeline;
@@ -224,15 +210,6 @@ export default function Pipeline() {
                                     }`}
                             >
                                 Execution History
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('models')}
-                                className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'models'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                    }`}
-                            >
-                                Models
                             </button>
                         </nav>
                     </div>
@@ -456,75 +433,6 @@ export default function Pipeline() {
                                 </div>
                             )}
                         </Card>
-                    )}
-
-                    {activeTab === 'models' && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Registered Models */}
-                            <Card title="Registered Models">
-                                {modelsLoading ? (
-                                    <div className="flex items-center justify-center h-32">
-                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-                                    </div>
-                                ) : models && models.models.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {models.models.map((model: Model) => (
-                                            <div key={model.id} className="border border-gray-200 rounded-lg p-3">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <h4 className="font-medium text-gray-900">{model.name}</h4>
-                                                    <span className="text-xs text-gray-500">v{model.version}</span>
-                                                </div>
-                                                <div className="text-sm text-gray-600 mb-2">{model.description || 'No description'}</div>
-                                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                                                    <div><strong>Type:</strong> {model.model_type}</div>
-                                                    <div><strong>Framework:</strong> {model.framework}</div>
-                                                    <div><strong>Size:</strong> {(model.file_size / 1024 / 1024).toFixed(2)} MB</div>
-                                                    {model.accuracy && (
-                                                        <div><strong>Accuracy:</strong> {(model.accuracy * 100).toFixed(2)}%</div>
-                                                    )}
-                                                </div>
-                                                <div className="mt-2 text-xs text-gray-400">
-                                                    Created: {new Date(model.created_at).toLocaleDateString()}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8 text-gray-500">
-                                        No registered models found.
-                                    </div>
-                                )}
-                            </Card>
-
-                            {/* Project Model Files */}
-                            <Card title="Project Model Files">
-                                {projectModelFilesLoading ? (
-                                    <div className="flex items-center justify-center h-32">
-                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-                                    </div>
-                                ) : projectModelFiles && projectModelFiles.files.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {projectModelFiles.files.map((file: ProjectModelFile) => (
-                                            <div key={file.path} className="border border-gray-200 rounded-lg p-3">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <h4 className="font-medium text-gray-900">{file.name}</h4>
-                                                    <span className="text-xs text-gray-500">{file.file_type}</span>
-                                                </div>
-                                                <div className="text-sm text-gray-600 mb-2">{file.path}</div>
-                                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                                                    <div><strong>Size:</strong> {(file.size / 1024 / 1024).toFixed(2)} MB</div>
-                                                    <div><strong>Modified:</strong> {new Date(file.modified_time).toLocaleDateString()}</div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8 text-gray-500">
-                                        No model files found in project directory.
-                                    </div>
-                                )}
-                            </Card>
-                        </div>
                     )}
                 </div>
             ) : (
