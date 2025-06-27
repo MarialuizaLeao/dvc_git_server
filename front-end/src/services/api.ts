@@ -159,7 +159,7 @@ export const projectApi = {
         sort_by?: string;
         sort_order?: string;
     }) => {
-        const response = await api.get(`/${userId}/${projectId}/exp/show`, { params });
+        const response = await api.post(`/${userId}/${projectId}/exp/show`, params);
         return response.data;
     },
 
@@ -281,24 +281,33 @@ export const projectApi = {
 };
 
 export const experimentsApi = {
-    list: async (projectId: string) => {
-        const response = await api.get(`/experiments/${projectId}/list`);
+    list: async (userId: string, projectId: string) => {
+        const response = await api.post(`/${userId}/${projectId}/exp/show`, {
+            output_format: 'json'
+        });
         return response;
     },
-    create: async (data: CreateExperimentData) => {
-        const response = await api.post('/experiments/create', data);
+    create: async (userId: string, projectId: string, data: CreateExperimentData) => {
+        const response = await api.post(`/${userId}/${projectId}/exp/run`, data);
         return response;
     },
-    start: async (experimentId: string) => {
-        const response = await api.post(`/experiments/${experimentId}/start`);
+    start: async (userId: string, projectId: string, experimentId: string) => {
+        const response = await api.post(`/${userId}/${projectId}/exp/apply`, {
+            experiment_id: experimentId
+        });
         return response;
     },
-    stop: async (experimentId: string) => {
-        const response = await api.post(`/experiments/${experimentId}/stop`);
+    stop: async (userId: string, projectId: string, experimentId: string) => {
+        const response = await api.post(`/${userId}/${projectId}/exp/remove`, {
+            experiment_ids: [experimentId]
+        });
         return response;
     },
-    getMetrics: async (experimentId: string) => {
-        const response = await api.get(`/experiments/${experimentId}/metrics`);
+    getMetrics: async (userId: string, projectId: string, experimentId: string) => {
+        const response = await api.post(`/${userId}/${projectId}/exp/show`, {
+            output_format: 'json',
+            rev: experimentId
+        });
         return response;
     }
 };

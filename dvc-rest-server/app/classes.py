@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Any, Dict, Literal
+from typing import List, Optional, Any, Dict, Literal, Union
 from datetime import datetime
 from enum import Enum
 from bson import ObjectId
@@ -218,7 +218,7 @@ class RunExperimentRequest(BaseModel):
     parallel_jobs: Optional[int] = None
     temp: bool = False
     experiment_name: Optional[str] = None
-    set_param: Optional[List[str]] = None
+    set_param: Optional[Union[List[str], Dict[str, Any]]] = None
     experiment_rev: Optional[str] = None
     cwd_reset: Optional[str] = None
     message: Optional[str] = None

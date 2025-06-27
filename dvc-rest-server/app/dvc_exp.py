@@ -3,6 +3,7 @@ from subprocess import run, CalledProcessError
 import asyncio
 from asyncio.subprocess import PIPE
 import logging
+import yaml
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -72,6 +73,73 @@ async def dvc_exp_run(user_id: str, project_id: str,quiet: bool = False,
     """
     
     project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    
+    # Validate project path exists
+    if not os.path.exists(project_path):
+        raise Exception(f"Project path does not exist: {project_path}")
+    
+    # Check if this is a DVC project
+    dvc_yaml_path = os.path.join(project_path, "dvc.yaml")
+    dvc_dir = os.path.join(project_path, ".dvc")
+    if not os.path.exists(dvc_yaml_path):
+        raise Exception(f"Not a DVC project: {dvc_yaml_path} not found")
+    if not os.path.exists(dvc_dir):
+        raise Exception(f"DVC not initialized: {dvc_dir} not found")
+    
+    # If we have parameters to set, first update the params.yaml file
+    if set_param and isinstance(set_param, dict):
+        params_file = os.path.join(project_path, "params.yaml")
+        
+        # Read existing params.yaml if it exists
+        existing_params = {}
+        if os.path.exists(params_file):
+            try:
+                with open(params_file, 'r') as f:
+                    existing_params = yaml.safe_load(f) or {}
+            except Exception as e:
+                logger.warning(f"Could not read existing params.yaml: {e}")
+                existing_params = {}
+        
+        # Check if this is a DVC project with stages
+        dvc_yaml_path = os.path.join(project_path, "dvc.yaml")
+        stage_params = {}
+        if os.path.exists(dvc_yaml_path):
+            try:
+                with open(dvc_yaml_path, 'r') as f:
+                    dvc_config = yaml.safe_load(f)
+                    if dvc_config and 'stages' in dvc_config:
+                        # Extract stage parameters
+                        for stage_name, stage_config in dvc_config['stages'].items():
+                            if 'params' in stage_config:
+                                for param in stage_config['params']:
+                                    if '.' in param:
+                                        stage, param_name = param.split('.', 1)
+                                        if stage == stage_name:
+                                            stage_params[param_name] = stage_name
+            except Exception as e:
+                logger.warning(f"Could not read dvc.yaml: {e}")
+        
+        # Update parameters with proper structure
+        updated_params = existing_params.copy()
+        for param_name, param_value in set_param.items():
+            # Check if this parameter belongs to a specific stage
+            if param_name in stage_params:
+                stage_name = stage_params[param_name]
+                if stage_name not in updated_params:
+                    updated_params[stage_name] = {}
+                updated_params[stage_name][param_name] = param_value
+            else:
+                # Add to root level if no stage association found
+                updated_params[param_name] = param_value
+        
+        # Write updated params.yaml
+        try:
+            with open(params_file, 'w') as f:
+                yaml.dump(updated_params, f, default_flow_style=False)
+            logger.info(f"Updated params.yaml with new parameters: {list(set_param.keys())}")
+        except Exception as e:
+            logger.warning(f"Could not update params.yaml: {e}")
+    
     command = "dvc exp run"
 
     if quiet:
@@ -99,7 +167,43 @@ async def dvc_exp_run(user_id: str, project_id: str,quiet: bool = False,
     if experiment_name:
         command += f" -n {experiment_name}"
     if set_param:
-        command += " " + " ".join(f"-S {param}" for param in set_param)
+        # Handle both list and dict formats
+        if isinstance(set_param, dict):
+            # Check if this is a DVC project with stages
+            dvc_yaml_path = os.path.join(project_path, "dvc.yaml")
+            stage_params = {}
+            if os.path.exists(dvc_yaml_path):
+                try:
+                    with open(dvc_yaml_path, 'r') as f:
+                        dvc_config = yaml.safe_load(f)
+                        if dvc_config and 'stages' in dvc_config:
+                            # Extract stage parameters
+                            for stage_name, stage_config in dvc_config['stages'].items():
+                                if 'params' in stage_config:
+                                    for param in stage_config['params']:
+                                        if '.' in param:
+                                            stage, param_name = param.split('.', 1)
+                                            if stage == stage_name:
+                                                stage_params[param_name] = stage_name
+                except Exception as e:
+                    logger.warning(f"Could not read dvc.yaml for parameter conversion: {e}")
+            
+            # Convert dict to list of "key=value" strings with proper stage prefixes
+            param_list = []
+            for k, v in set_param.items():
+                if k in stage_params:
+                    # Use stage prefix for stage-specific parameters
+                    param_list.append(f"{stage_params[k]}.{k}={v}")
+                else:
+                    # Use regular format for root-level parameters
+                    param_list.append(f"{k}={v}")
+        elif isinstance(set_param, list):
+            param_list = set_param
+        else:
+            param_list = []
+        
+        if param_list:
+            command += " " + " ".join(f"-S {param}" for param in param_list)
     if experiment_rev:
         command += f" -r {experiment_rev}"
     if cwd_reset:
@@ -120,18 +224,45 @@ async def dvc_exp_run(user_id: str, project_id: str,quiet: bool = False,
         command += " -k"
     if ignore_errors:
         command += " --ignore-errors"
+    
+    # Add targets at the end as positional arguments
     if targets:
         command += " " + " ".join(targets)
+    # If no targets specified, don't add any - DVC will run the default pipeline
 
-    process = await asyncio.create_subprocess_shell(
-        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await process.communicate()
+    # Log the final command for debugging
+    logger.info(f"Executing DVC command: {command}")
 
-    if process.returncode != 0:
-        raise Exception(f"`dvc exp run` failed: {stderr.decode().strip()}")
+    try:
+        # Use full path to DVC and set proper environment
+        import subprocess
+        env = os.environ.copy()
+        env['PATH'] = f"{os.path.expanduser('~/.local/bin')}:{env.get('PATH', '')}"
+        
+        process = await asyncio.create_subprocess_shell(
+            command, 
+            cwd=project_path, 
+            stdout=asyncio.subprocess.PIPE, 
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+        stdout, stderr = await process.communicate()
 
-    return stdout.decode().strip()
+        # Log the output for debugging
+        if stdout:
+            logger.info(f"DVC stdout: {stdout.decode().strip()}")
+        if stderr:
+            logger.warning(f"DVC stderr: {stderr.decode().strip()}")
+
+        if process.returncode != 0:
+            error_msg = stderr.decode().strip() if stderr else "Unknown error"
+            logger.error(f"DVC command failed with return code {process.returncode}: {error_msg}")
+            raise Exception(f"`dvc exp run` failed: {error_msg}")
+
+        return stdout.decode().strip()
+    except Exception as e:
+        logger.error(f"Exception during DVC command execution: {str(e)}")
+        raise
 
 async def dvc_exp_show(user_id: str, project_id: str,     quiet: bool = False,
     verbose: bool = False,
@@ -219,8 +350,12 @@ async def dvc_exp_show(user_id: str, project_id: str,     quiet: bool = False,
     if force:
         command += " -f"
 
+    # Use full path to DVC and set proper environment
+    env = os.environ.copy()
+    env['PATH'] = f"{os.path.expanduser('~/.local/bin')}:{env.get('PATH', '')}"
+
     process = await asyncio.create_subprocess_shell(
-        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env
     )
     stdout, stderr = await process.communicate()
 
@@ -245,8 +380,12 @@ async def dvc_exp_list(user_id: str, project_id: str, git_remote: str = None):
     if git_remote:
         command += f" {git_remote}"
 
+    # Use full path to DVC and set proper environment
+    env = os.environ.copy()
+    env['PATH'] = f"{os.path.expanduser('~/.local/bin')}:{env.get('PATH', '')}"
+
     process = await asyncio.create_subprocess_shell(
-        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env
     )
     stdout, stderr = await process.communicate()
 
@@ -355,35 +494,6 @@ async def dvc_exp_push(user_id: str, project_id: str, git_remote: str, experimen
 
     if process.returncode != 0:
         raise Exception(f"`dvc exp push` failed: {stderr.decode().strip()}")
-
-    return stdout.decode().strip()
-
-async def dvc_exp_save(user_id: str, project_id: str, name: str = None, force: bool = False):
-    """
-    Save the current workspace as an experiment using `dvc exp save`.
-
-    Args:
-        cwd (str): The directory to run the command in.
-        name (str, optional): The name to give to the saved experiment.
-        force (bool, optional): Force overwrite if the experiment already exists.
-
-    Returns:
-        str: The output of the `dvc exp save` command.
-    """
-    project_path = os.path.join(REPO_ROOT, user_id, project_id)
-    command = "dvc exp save"
-    if name:
-        command += f" --name {name}"
-    if force:
-        command += " --force"
-
-    process = await asyncio.create_subprocess_shell(
-        command, cwd=project_path, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await process.communicate()
-
-    if process.returncode != 0:
-        raise Exception(f"`dvc exp save` failed: {stderr.decode().strip()}")
 
     return stdout.decode().strip()
 

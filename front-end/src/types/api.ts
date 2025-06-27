@@ -73,7 +73,7 @@ export interface ExperimentResponse {
 }
 
 export interface CreateExperimentData {
-    experiment_name: string;
+    experiment_name?: string;
     set_param?: Record<string, any>;
     targets?: string[];
     queue?: boolean;

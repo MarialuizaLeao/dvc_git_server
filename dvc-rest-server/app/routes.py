@@ -456,7 +456,7 @@ async def run_experiment(user_id: str, project_id:str, request: RunExperimentReq
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{user_id}/{project_id}/exp/show")
+@router.post("/{user_id}/{project_id}/exp/show")
 async def show_experiments(user_id: str, project_id:str, request: ShowExperimentsRequest): 
     try:
         result = await dvc_exp_show(user_id, project_id, quiet=request.quiet,
