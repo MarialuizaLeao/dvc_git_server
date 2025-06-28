@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { API_ENDPOINTS } from '../constants/api';
 
 interface ParameterValue {
@@ -38,15 +38,9 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState('current');
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [showImportDialog, setShowImportDialog] = useState(false);
     const [showExportDialog, setShowExportDialog] = useState(false);
-    const [editingParameter, setEditingParameter] = useState<{
-        groupIndex: number;
-        paramIndex: number;
-        parameter: ParameterValue;
-    } | null>(null);
 
     // Load current parameters
     useEffect(() => {
@@ -154,45 +148,6 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
             }
         } catch (err) {
             setError('Falha ao excluir conjunto de parâmetros');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const validateParameters = async () => {
-        if (!parameterSet) {
-            setError('Nenhum parâmetro para validar');
-            return;
-        }
-
-        setIsLoading(true);
-        setError(null);
-        try {
-            const response = await fetch(API_ENDPOINTS.VALIDATE_PARAMETERS(userId, projectId), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(parameterSet),
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.valid) {
-                    setSuccess('Todos os parâmetros são válidos!');
-                } else {
-                    setError(`Validação falhou: ${data.errors.join(', ')}`);
-                }
-                setTimeout(() => {
-                    setSuccess(null);
-                    setError(null);
-                }, 5000);
-            } else {
-                const errorData = await response.json();
-                setError(errorData.detail || 'Falha ao validar parâmetros');
-            }
-        } catch (err) {
-            setError('Falha ao validar parâmetros');
         } finally {
             setIsLoading(false);
         }
@@ -398,7 +353,6 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                         </div>
                     ) : (
                         <div className="text-center py-12">
-                            <div className="text-gray-400 text-6xl mb-4">⚙️</div>
                             <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum Parâmetro Configurado</h3>
                             <p className="text-gray-600 mb-4">
                                 Comece criando um conjunto de parâmetros ou importando de um arquivo.

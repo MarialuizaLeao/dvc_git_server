@@ -273,26 +273,6 @@ export default function DataManagement() {
                         <h1 className="text-2xl font-bold text-gray-900">Gerenciamento de Dados</h1>
                         <p className="text-gray-500 mt-1">Gerencie conjuntos de dados, armazenamento e código para {project.project_name}</p>
                     </div>
-                    <div className="flex space-x-3">
-                        <button
-                            onClick={() => setIsDataSourceModalOpen(true)}
-                            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                        >
-                            Adicionar Fonte de Dados
-                        </button>
-                        <button
-                            onClick={() => setIsRemoteStorageModalOpen(true)}
-                            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                        >
-                            Configurar Armazenamento
-                        </button>
-                        <button
-                            onClick={() => setIsCodeUploadModalOpen(true)}
-                            className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
-                        >
-                            Enviar Código
-                        </button>
-                    </div>
                 </div>
             </div>
 

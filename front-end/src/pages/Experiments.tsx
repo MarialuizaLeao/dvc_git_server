@@ -141,7 +141,7 @@ const Experiments = () => {
                         onClick={() => experiments.refetch()}
                         className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
                     >
-                        🔄 Atualizar
+                        Atualizar
                     </button>
                     <button
                         onClick={() => setIsModalOpen(true)}

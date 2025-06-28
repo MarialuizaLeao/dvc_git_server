@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { dataApi, projectApi } from '../services/api';
+import { dataApi } from '../services/api';
 import type {
     CreateDataSourceRequest,
     UpdateDataSourceRequest,
