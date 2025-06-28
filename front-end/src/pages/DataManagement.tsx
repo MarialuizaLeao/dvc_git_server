@@ -65,8 +65,6 @@ export default function DataManagement() {
         getRemoteStorages,
         createRemoteStorage,
         deleteRemoteStorage,
-        pushData,
-        pullData,
         getDvcStatus
     } = useDataManagement(CURRENT_USER.id, projectId || '');
 
@@ -78,8 +76,6 @@ export default function DataManagement() {
     const deleteDataSourceMutation = deleteDataSource;
     const createRemoteStorageMutation = createRemoteStorage;
     const deleteRemoteStorageMutation = deleteRemoteStorage;
-    const pushDataMutation = pushData;
-    const pullDataMutation = pullData;
 
     // Code management functions
     const loadCodeFiles = async (): Promise<void> => {
@@ -203,26 +199,6 @@ export default function DataManagement() {
             } catch (error) {
                 console.error('Failed to delete remote storage:', error);
             }
-        }
-    };
-
-    const handlePushData = async (): Promise<void> => {
-        try {
-            await pushDataMutation.mutateAsync();
-            alert('Data pushed successfully!');
-        } catch (error) {
-            console.error('Failed to push data:', error);
-            alert('Failed to push data. Please check the console for details.');
-        }
-    };
-
-    const handlePullData = async (): Promise<void> => {
-        try {
-            await pullDataMutation.mutateAsync();
-            alert('Data pulled successfully!');
-        } catch (error) {
-            console.error('Failed to pull data:', error);
-            alert('Failed to pull data. Please check the console for details.');
         }
     };
 

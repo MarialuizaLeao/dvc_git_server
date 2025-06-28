@@ -1,55 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CURRENT_USER } from '../constants/user';
 import Card from '../components/Card';
 import {
-    TbDownload,
-    TbEye,
-    TbTrash,
-    TbFile,
-    TbCalendar,
     TbBrain,
-    TbSettings,
     TbPlayerPlay,
     TbClock,
-    TbCheck,
     TbX,
     TbChartLine,
     TbChartBar,
     TbActivity
 } from 'react-icons/tb';
 import { modelApi } from '../services/api';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import type {
-    Model,
-    ModelListResponse,
-    ModelPathConfig,
-    CreateModelPathRequest,
-    UpdateModelPathRequest,
     ModelEvaluation,
-    CreateEvaluationRequest,
-    ProjectModelFile,
-    ProjectModelFilesResponse
+    CreateEvaluationRequest
 } from '../types/api';
 
 export default function Models() {
     const { id: projectId } = useParams<{ id: string }>();
     const userId = CURRENT_USER.id;
-    const [pathModalOpen, setPathModalOpen] = useState(false);
-    const [selectedModel, setSelectedModel] = useState<Model | null>(null);
-    const [viewModalOpen, setViewModalOpen] = useState(false);
-    const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
-    const [evaluating, setEvaluating] = useState<string | null>(null);
     const [selectedEvaluation, setSelectedEvaluation] = useState<ModelEvaluation | null>(null);
-
-    const queryClient = useQueryClient();
-
-    // Fetch models
-    const { data: modelsData, isLoading: modelsLoading } = useQuery({
-        queryKey: ['models', userId, projectId],
-        queryFn: () => modelApi.getModels(userId, projectId!),
-        enabled: !!userId && !!projectId
-    });
+    const [evaluating, setEvaluating] = useState<string | null>(null);
 
     // Fetch model paths
     const { data: modelPathsData, isLoading: pathsLoading } = useQuery({
@@ -73,24 +46,8 @@ export default function Models() {
         }
     });
 
-    const deleteModelMutation = useMutation({
-        mutationFn: (modelId: string) => modelApi.deleteModel(userId, projectId!, modelId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['models', userId, projectId] });
-        }
-    });
-
-    const models = modelsData?.models || [];
     const modelPaths = modelPathsData?.model_paths || [];
     const evaluations = evaluationsQuery.data?.model_evaluations || [];
-
-    const formatFileSize = (bytes: number): string => {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    };
 
     const formatDate = (dateString: string): string => {
         return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -121,10 +78,6 @@ export default function Models() {
         }
     };
 
-    const handleDeleteModelPath = async (pathId: string) => {
-        console.log('Caminhos de modelo do pipeline DVC não podem ser excluídos manualmente');
-    };
-
     const handleCreateEvaluation = async (modelPath: string) => {
         setEvaluating(modelPath);
         try {
@@ -137,32 +90,6 @@ export default function Models() {
             console.error('Error creating evaluation:', error);
         } finally {
             setEvaluating(null);
-        }
-    };
-
-    const handleViewModel = (model: Model) => {
-        setSelectedModel(model);
-        setViewModalOpen(true);
-    };
-
-    const handleDownloadModel = async (model: Model) => {
-        try {
-            const res = await modelApi.downloadModel(userId, projectId!, model.id!);
-            window.open(`/static/${res.file_path}`, '_blank');
-        } catch (err: any) {
-            alert(err.message || 'Falha ao baixar o modelo');
-        }
-    };
-
-    const handleDeleteModel = async (model: Model) => {
-        if (!window.confirm(`Tem certeza que deseja excluir ${model.name}?`)) return;
-        setDeleteLoading(model.id!);
-        try {
-            await deleteModelMutation.mutateAsync(model.id!);
-        } catch (err: any) {
-            alert(err.message || 'Falha ao excluir o modelo');
-        } finally {
-            setDeleteLoading(null);
         }
     };
 
@@ -183,7 +110,7 @@ export default function Models() {
         return String(value);
     };
 
-    const renderEvaluationPlots = (evaluation: ModelEvaluation) => {
+    const renderEvaluationPlots = () => {
         // This would be populated with actual plot data from the backend
         // For now, showing a placeholder
         return (
@@ -212,14 +139,6 @@ export default function Models() {
             </div>
         );
     };
-
-    if (modelsLoading) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-        );
-    }
 
     return (
         <div className="space-y-6">
@@ -342,64 +261,6 @@ export default function Models() {
                 </Card>
             </div>
 
-            {/* Model Path Modal */}
-            {pathModalOpen && (
-                <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-                    <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-                        <div className="mt-3">
-                            <h3 className="text-lg font-medium text-gray-900 mb-4">
-                                DVC Pipeline Configuration
-                            </h3>
-                            <div className="space-y-4">
-                                {modelPathsData?.error ? (
-                                    <div className="text-red-600 text-sm">
-                                        <p><strong>Error:</strong> {modelPathsData.error}</p>
-                                        <p className="mt-2">Make sure your project has a valid dvc.yaml file with model outputs defined in the pipeline stages.</p>
-                                    </div>
-                                ) : modelPathsData?.evaluation_stage ? (
-                                    <div className="space-y-3">
-                                        <div>
-                                            <h4 className="font-medium text-gray-900">Evaluation Stage</h4>
-                                            <p className="text-sm text-gray-600">{modelPathsData.evaluation_stage.name}</p>
-                                        </div>
-                                        {modelPathsData.metrics_path && (
-                                            <div>
-                                                <h4 className="font-medium text-gray-900">Metrics Path</h4>
-                                                <p className="text-sm text-gray-600">{modelPathsData.metrics_path}</p>
-                                            </div>
-                                        )}
-                                        <div>
-                                            <h4 className="font-medium text-gray-900">Available Models</h4>
-                                            <div className="space-y-2">
-                                                {modelPaths.map((path) => (
-                                                    <div key={path._id} className="text-sm text-gray-600 p-2 bg-gray-50 rounded">
-                                                        <strong>{path.model_name}</strong><br />
-                                                        Path: {path.model_path}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-yellow-600 text-sm">
-                                        <p>No evaluation stage found in dvc.yaml.</p>
-                                        <p className="mt-2">Add an evaluation stage to your DVC pipeline to enable model evaluation.</p>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="mt-6 flex justify-end">
-                                <button
-                                    onClick={() => setPathModalOpen(false)}
-                                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-                                >
-                                    Close
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* Evaluation Details Modal */}
             {selectedEvaluation && (
                 <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -448,7 +309,7 @@ export default function Models() {
                             )}
 
                             {/* Plots */}
-                            {renderEvaluationPlots(selectedEvaluation)}
+                            {renderEvaluationPlots()}
 
                             {/* Logs */}
                             {selectedEvaluation.evaluation_logs && selectedEvaluation.evaluation_logs.length > 0 && (

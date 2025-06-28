@@ -4,7 +4,7 @@ import { useProjects } from '../hooks/useProjects';
 import { CURRENT_USER } from '../constants/user';
 import CreateProjectModal from '../components/CreateProjectModal';
 import ProjectCard from '../components/ProjectCard';
-import type { CreateProjectRequest, Project } from '../types/api';
+import type { CreateProjectRequest } from '../types/api';
 
 type ProjectFormData = Omit<CreateProjectRequest, 'username'>;
 

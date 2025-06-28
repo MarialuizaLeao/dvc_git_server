@@ -1,27 +1,9 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useExperiments } from '../hooks/useExperiments';
 import { CURRENT_USER } from '../constants/user';
 import RunExperimentModal from '../components/RunExperimentModal';
 import type { CreateExperimentData } from '../types/api';
-
-interface Experiment {
-    id: string;
-    name: string;
-    status: 'running' | 'completed' | 'failed' | 'pending';
-    model: string;
-    dataset: string;
-    created_at: string;
-    metrics: {
-        accuracy?: number;
-        loss?: number;
-    };
-}
-
-interface ExperimentResponse {
-    message: string;
-    output: any; // This will be the JSON output from dvc exp show
-}
 
 const Experiments = () => {
     const { id: projectId } = useParams();
@@ -36,19 +18,6 @@ const Experiments = () => {
             setIsModalOpen(false);
         } catch (error) {
             console.error('Failed to create experiment:', error);
-        }
-    };
-
-    const getStatusColor = (status: Experiment['status']) => {
-        switch (status) {
-            case 'running':
-                return 'text-blue-600';
-            case 'completed':
-                return 'text-green-600';
-            case 'failed':
-                return 'text-red-600';
-            default:
-                return 'text-gray-600';
         }
     };
 
