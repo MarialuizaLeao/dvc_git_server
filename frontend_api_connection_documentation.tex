@@ -1,0 +1,207 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[portuguese]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={Documentação da Conexão Front-end e API - Plataforma MLOps},
+    pdfpagemode=FullScreen,
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Documentação Front-end/API}
+\lhead{Plataforma MLOps}
+\rfoot{Página \thepage}
+
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    backgroundcolor=\color{gray!10},
+    showstringspaces=false,
+    tabsize=2
+}
+
+\begin{document}
+
+\title{\Huge\textbf{Documentação da Conexão Front-end e API}\\\vspace{0.5cm}\Large Plataforma MLOps - Flautim}
+\author{Equipe de Desenvolvimento}
+\date{\today}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Visão Geral da Arquitetura de Comunicação}
+
+A plataforma MLOps Flautim implementa uma arquitetura de comunicação robusta entre o front-end React e o backend FastAPI, estabelecendo uma integração completa e eficiente para todas as operações de gerenciamento de projetos de machine learning. O sistema de comunicação é baseado em REST APIs com autenticação baseada em usuário, permitindo operações seguras e controladas sobre projetos, pipelines, experimentos e modelos.
+
+A arquitetura de comunicação segue o padrão cliente-servidor com separação clara de responsabilidades. O front-end atua como cliente responsável pela interface do usuário e interações, enquanto o backend gerencia a lógica de negócio, persistência de dados e integração com ferramentas externas como DVC, Git e sistemas de armazenamento. A comunicação é realizada através de requisições HTTP utilizando a biblioteca Axios, com tratamento robusto de erros e estados de loading.
+
+O sistema implementa um padrão de organização modular para as APIs, onde cada área funcional possui seus próprios endpoints e serviços correspondentes no front-end. Esta organização facilita manutenção, escalabilidade e compreensão do código. Cada módulo da aplicação (projetos, pipelines, dados, experimentos, modelos) possui sua própria API dedicada com endpoints específicos para operações CRUD e funcionalidades avançadas.
+
+A configuração da comunicação é centralizada através de constantes e configurações compartilhadas, permitindo fácil modificação de URLs base, timeouts e headers de autenticação. O sistema implementa interceptors para tratamento global de erros e transformação de respostas, garantindo consistência na comunicação entre front-end e backend.
+
+\section{Configuração e Infraestrutura da API}
+
+A configuração da comunicação com a API é gerenciada através de um sistema centralizado que define parâmetros essenciais para todas as requisições. O arquivo de configuração principal define a URL base da API como `http://localhost:8000`, estabelecendo o ponto de entrada para todas as comunicações com o backend. Esta configuração é utilizada por todas as funções de API e pode ser facilmente modificada para diferentes ambientes de desenvolvimento, teste e produção.
+
+A instância do Axios é configurada com headers padrão incluindo `Content-Type: application/json` para garantir que todas as requisições sejam enviadas no formato JSON apropriado. O sistema implementa interceptors de resposta que capturam e tratam erros de forma consistente, convertendo diferentes tipos de erro (erro de rede, erro de servidor, erro de configuração) em mensagens de erro padronizadas que podem ser exibidas ao usuário.
+
+A autenticação é baseada em identificação de usuário através do parâmetro `userId` presente em todas as requisições. O sistema utiliza um usuário fixo definido nas constantes (`CURRENT_USER`) com ID `6848b6c8408bff83c12646ec`, permitindo que todas as operações sejam associadas a este usuário específico. Esta abordagem simplifica o desenvolvimento e teste, mas pode ser expandida para suportar múltiplos usuários e autenticação JWT no futuro.
+
+O sistema de endpoints é organizado de forma hierárquica seguindo o padrão REST, onde cada recurso possui sua própria estrutura de URLs. A organização segue o padrão `/{userId}/{projectId}/{resource}` para a maioria dos endpoints, permitindo acesso controlado aos recursos baseado no usuário e projeto específico. Esta estrutura facilita implementação de controle de acesso e auditoria de operações.
+
+\section{APIs de Gerenciamento de Projetos}
+
+A API de gerenciamento de projetos implementa funcionalidades completas para criação, listagem, recuperação e operações DVC de projetos. A funcionalidade de criação de projetos (`createProject`) permite aos usuários criar novos projetos através de requisição POST para o endpoint `/{userId}/project/create`, enviando dados estruturados incluindo nome do projeto, descrição, tipo, framework, versão do Python e dependências. O sistema retorna uma resposta confirmando a criação com ID do projeto gerado.
+
+A funcionalidade de listagem de projetos (`getProjects`) recupera todos os projetos associados ao usuário através de requisição GET para `/{userId}/projects`, retornando uma lista estruturada de projetos com metadados completos. A funcionalidade de recuperação de projeto específico (`getProject`) permite acessar detalhes completos de um projeto através de requisição GET para `/{userId}/project/{projectId}`, retornando informações detalhadas incluindo configurações, contadores de modelos e experimentos.
+
+As operações DVC são integradas diretamente na API de projetos, permitindo controle de versionamento de dados e código. A funcionalidade `trackData` permite rastrear arquivos de dados específicos através de requisição POST para `/{userId}/{projectId}/track_data`, enviando lista de arquivos para serem versionados. A funcionalidade `trackFiles` implementa rastreamento de arquivos de código e configuração através de requisição POST para `/{userId}/{projectId}/track_files`.
+
+A funcionalidade `getUrl` permite download de dados de URLs remotas através de requisição POST para `/{userId}/{projectId}/get_url`, especificando URL de origem e destino local. As funcionalidades `setRemote`, `pushData` e `pullData` implementam operações de sincronização com repositórios remotos, permitindo backup e compartilhamento de dados versionados. A funcionalidade `listDvcBranches` recupera lista de branches DVC disponíveis através de requisição GET para `/{userId}/{projectId}/list_dvc_branches`.
+
+\section{APIs de Métricas e Visualizações}
+
+O sistema implementa APIs especializadas para recuperação e comparação de métricas de machine learning. A funcionalidade `getMetrics` permite recuperar métricas de projetos através de requisição GET para `/{userId}/{projectId}/metrics_show`, suportando parâmetros opcionais como `all_commits`, `json` e `yaml` para diferentes formatos de saída. A funcionalidade `getMetricsDiff` implementa comparação de métricas entre diferentes revisões através de requisição GET para `/{userId}/{projectId}/metrics_diff`, permitindo análise de evolução de performance.
+
+As funcionalidades de visualização implementam geração e comparação de plots através das APIs `showPlots` e `diffPlots`. A funcionalidade `showPlots` gera visualizações através de requisição GET para `/{userId}/{projectId}/plots_show`, suportando parâmetros como targets específicos, formato de saída (JSON, HTML) e templates customizados. A funcionalidade `diffPlots` compara visualizações entre revisões através de requisição GET para `/{userId}/{projectId}/plots_diff`, permitindo análise visual de mudanças em métricas e resultados.
+
+Estas APIs são integradas com o sistema DVC para recuperação automática de métricas e plots gerados durante execução de pipelines e experimentos. O sistema suporta diferentes formatos de saída para facilitar integração com ferramentas externas de análise e relatórios. As métricas são armazenadas em arquivos JSON estruturados que são versionados junto com o código e dados do projeto.
+
+\section{APIs de Experimentos}
+
+A API de experimentos implementa funcionalidades completas para gerenciamento do ciclo de vida de experimentos de machine learning. A funcionalidade `listExperiments` recupera lista de experimentos disponíveis através de requisição GET para `/{userId}/{projectId}/exp/list`, suportando parâmetro opcional `git_remote` para sincronização com repositórios remotos. A funcionalidade `showExperiments` exibe detalhes completos de experimentos através de requisição POST para `/{userId}/{projectId}/exp/show`, suportando parâmetros como `quiet`, `verbose`, `all`, `sha`, `param_deps`, `sort_by` e `sort_order`.
+
+A funcionalidade `applyExperiment` permite aplicar estado de experimento específico através de requisição POST para `/{userId}/{projectId}/exp/apply`, enviando ID do experimento e flag de força para sobrescrever mudanças locais. As funcionalidades `pushExperiment` e `pullExperiment` implementam sincronização de experimentos com repositórios remotos através de requisições POST para `/{userId}/{projectId}/exp/push` e `/{userId}/{projectId}/exp/pull` respectivamente.
+
+O sistema de experimentos é integrado com DVC para versionamento automático de parâmetros, código e dados utilizados em cada experimento. As APIs suportam operações em lote e sincronização com sistemas de controle de versão remotos, facilitando colaboração em equipe e reprodução de experimentos em diferentes ambientes.
+
+\section{APIs de Pipeline}
+
+A API de pipeline implementa funcionalidades avançadas para gerenciamento completo de pipelines de machine learning. A funcionalidade `getPipeline` recupera configuração de pipeline através de requisição GET para `/{userId}/{projectId}/pipeline/configs`, retornando a primeira configuração disponível para o projeto. A funcionalidade `createPipeline` permite criação de novas configurações de pipeline através de requisição POST para `/{userId}/{projectId}/pipeline/config`, enviando dados estruturados incluindo estágios, dependências e parâmetros de execução.
+
+A funcionalidade `updatePipeline` implementa atualização de configurações existentes através de requisição PUT para `/{userId}/{projectId}/pipeline/config/{pipelineId}`, permitindo modificação de estágios, parâmetros e dependências. A funcionalidade `deletePipeline` remove configurações de pipeline através de requisição DELETE para `/{userId}/{projectId}/pipeline/config/{pipelineId}`.
+
+A funcionalidade `executePipeline` inicia execução de pipeline através de requisição POST para `/{userId}/{projectId}/pipeline/execute`, enviando parâmetros de execução como `force`, `dry_run` e `pipeline_config_id`. A funcionalidade `recoverPipeline` implementa recuperação de execuções interrompidas através de requisição POST para `/{userId}/{projectId}/pipeline/recover`, permitindo retomada de execuções a partir do último ponto de sucesso.
+
+O sistema de pipeline é integrado com DVC para execução de estágios de processamento de dados, treinamento de modelos e avaliação de performance. As APIs suportam monitoramento em tempo real de execução, logs detalhados e métricas de performance para cada estágio do pipeline.
+
+\section{APIs de Gestão de Dados}
+
+A API de gestão de dados implementa funcionalidades completas para gerenciamento de fontes de dados, armazenamento remoto e operações DVC. A funcionalidade `getDataSources` recupera lista de fontes de dados configuradas através de requisição GET para `/{userId}/{projectId}/data/sources`, retornando configurações incluindo URLs, tipos de fonte e metadados. A funcionalidade `createDataSource` permite criação de novas fontes de dados através de requisição POST para `/{userId}/{projectId}/data/source`, enviando dados de configuração.
+
+A funcionalidade `updateDataSource` implementa atualização de fontes de dados existentes através de requisição PUT para `/{userId}/{projectId}/data/source/{sourceId}`, permitindo modificação de configurações e parâmetros. A funcionalidade `deleteDataSource` remove fontes de dados através de requisição DELETE para `/{userId}/{projectId}/data/source/{sourceId}`.
+
+As funcionalidades de armazenamento remoto incluem `getRemoteStorages`, `createRemoteStorage` e `deleteRemoteStorage` para gerenciamento de repositórios remotos. A funcionalidade `getDvcStatus` recupera status atual dos arquivos versionados através de requisição GET para `/{userId}/{projectId}/dvc/status`, retornando informações sobre arquivos tracked, untracked e modificados.
+
+O sistema de gestão de dados suporta integração com múltiplos provedores de armazenamento em nuvem incluindo Amazon S3, Google Cloud Storage e Azure Blob Storage. As APIs implementam operações de sincronização automática, backup e recuperação de dados, garantindo segurança e disponibilidade das informações do projeto.
+
+\section{APIs de Execução de Pipeline}
+
+A API de execução de pipeline implementa funcionalidades especializadas para monitoramento e histórico de execuções. A funcionalidade `getExecutions` recupera histórico de execuções através de requisição GET para `/{userId}/{projectId}/pipeline/executions`, suportando paginação através de parâmetros `page` e `page_size`. A funcionalidade `getExecution` recupera detalhes de execução específica através de requisição GET para `/{userId}/{projectId}/pipeline/executions/{executionId}`, retornando informações completas incluindo status, duração, logs e métricas.
+
+A funcionalidade `getLatestExecution` recupera execução mais recente através de requisição GET para `/{userId}/{projectId}/pipeline/executions/latest`, permitindo acesso rápido ao status atual do pipeline. O sistema implementa armazenamento persistente de histórico de execuções, incluindo metadados, logs de execução e métricas coletadas durante cada execução.
+
+As APIs de execução suportam diferentes tipos de execução incluindo execução completa de pipeline, execução de estágios individuais e execução em modo dry-run. O sistema implementa monitoramento em tempo real de execuções através de polling ou WebSockets, permitindo atualização automática da interface do usuário durante execuções longas.
+
+\section{APIs de Gerenciamento de Modelos}
+
+A API de gerenciamento de modelos implementa funcionalidades completas para versionamento, avaliação e comparação de modelos de machine learning. A funcionalidade `getModels` recupera lista de modelos através de requisição GET para `/{userId}/{projectId}/models`, suportando paginação e filtros por tipo de modelo. A funcionalidade `getModel` recupera detalhes de modelo específico através de requisição GET para `/{userId}/{projectId}/models/{modelId}`, retornando metadados, métricas de performance e informações de versionamento.
+
+A funcionalidade `uploadModel` permite upload de novos modelos através de requisição POST para `/{userId}/{projectId}/models/upload`, enviando dados do modelo incluindo arquivo, metadados e configurações. A funcionalidade `downloadModel` implementa download de modelos através de requisição GET para `/{userId}/{projectId}/models/{modelId}/download`, retornando caminho do arquivo para download.
+
+A funcionalidade `compareModels` implementa comparação de performance entre modelos através de requisição POST para `/{userId}/{projectId}/models/compare`, enviando lista de IDs de modelos para comparação. A funcionalidade `getProjectModelFiles` recupera arquivos de modelo do diretório do projeto através de requisição GET para `/{userId}/{projectId}/models/files`, permitindo acesso a modelos gerados por pipelines e experimentos.
+
+As APIs de configuração de caminhos de modelo incluem `getModelPaths`, `createModelPath`, `updateModelPath` e `deleteModelPath` para gerenciamento de configurações de saída de modelos em pipelines DVC. A funcionalidade `getModelEvaluations` recupera histórico de avaliações de modelos através de requisição GET para `/{userId}/{projectId}/model-evaluations`, retornando métricas de performance e resultados de avaliação.
+
+A funcionalidade `createModelEvaluation` permite execução de avaliação de modelo através de requisição POST para `/{userId}/{projectId}/evaluations`, enviando caminho do modelo e parâmetros de avaliação. A funcionalidade `getModelEvaluation` recupera detalhes de avaliação específica através de requisição GET para `/{userId}/{projectId}/evaluations/{evaluationId}`.
+
+\section{Integração com Hooks Customizados}
+
+O front-end implementa hooks customizados que encapsulam a lógica de comunicação com a API, fornecendo interfaces simplificadas para os componentes React. O hook `useProjects` implementa funcionalidades de gerenciamento de projetos, incluindo `getProjects`, `getProject` e `createProject`, utilizando React Query para cache automático e sincronização de dados. O hook `usePipelines` implementa funcionalidades de pipeline incluindo `getPipeline`, `createPipeline`, `updatePipeline`, `deletePipeline`, `executePipeline` e `recoverPipeline`.
+
+O hook `useDataManagement` implementa funcionalidades de gestão de dados incluindo `getDataSources`, `createDataSource`, `deleteDataSource`, `getRemoteStorages`, `createRemoteStorage`, `deleteRemoteStorage` e `getDvcStatus`. O hook `useExperiments` implementa funcionalidades de experimentos incluindo `experiments` (listagem), `createExperiment` e operações de execução.
+
+Estes hooks utilizam React Query para gerenciamento de estado, cache automático e sincronização de dados entre diferentes partes da aplicação. Os hooks implementam tratamento de erros consistente, estados de loading e invalidação automática de cache quando dados são modificados. A integração com React Query garante performance otimizada e experiência de usuário fluida mesmo com operações assíncronas complexas.
+
+\section{Funcionalidades Conectadas com API Real}
+
+O sistema implementa conectividade completa com APIs reais para a maioria das funcionalidades críticas. A gestão de projetos está totalmente conectada, incluindo criação, listagem, recuperação e operações DVC. Todas as operações de pipeline estão conectadas, incluindo configuração, execução, monitoramento e recuperação. A gestão de dados está completamente integrada, incluindo fontes de dados, armazenamento remoto e operações DVC.
+
+Os experimentos estão totalmente conectados com APIs reais, incluindo listagem, criação, execução e sincronização com repositórios remotos. O gerenciamento de modelos está completamente integrado, incluindo upload, download, avaliação e comparação de modelos. As métricas e visualizações estão conectadas com APIs reais para recuperação e comparação de métricas de performance.
+
+A execução de pipeline está totalmente conectada, incluindo histórico de execuções, monitoramento em tempo real e recuperação de execuções interrompidas. O versionamento de código e dados está completamente integrado através de operações DVC, incluindo tracking, commit, push e pull de arquivos versionados.
+
+\section{Funcionalidades com Dados Mockados}
+
+Apesar da conectividade extensiva com APIs reais, algumas funcionalidades ainda utilizam dados mockados ou placeholders para completar a experiência do usuário. Na página de detalhes do projeto (Project.tsx), as estatísticas de recursos como "Armazenamento utilizado: 2.5 GB", "Horas de computação: 10h" e "Uso de GPU: 5h" são hardcoded e não conectadas com APIs reais de monitoramento de recursos.
+
+As métricas de performance específicas como "Melhor acurácia: 98.5%" e "Último: 97.2%" na seção de modelos são hardcoded e não refletem dados reais de avaliação de modelos. O histórico de atividades na página de projeto inclui entradas mockadas como "Novo experimento iniciado: CNN com aumento de dados" e "Modelo v2 atingiu 98,5% de acurácia" que não são conectadas com APIs de histórico real.
+
+Na página de modelos (Models.tsx), as visualizações de gráficos de avaliação são implementadas como placeholders com mensagens como "A visualização do gráfico aparecerá aqui" e "A visualização do gráfico aparecerá aqui". Estas visualizações não estão conectadas com APIs reais de geração de gráficos ou dashboards interativos.
+
+O sistema de notificações e alertas em tempo real não está implementado, não havendo integração com WebSockets ou sistemas de notificação push para eventos como conclusão de experimentos, falhas em pipelines ou atualizações de modelos. A funcionalidade de compartilhamento de projetos e colaboração em equipe não está conectada com APIs reais de controle de acesso e permissões.
+
+\section{Tratamento de Erros e Estados}
+
+O sistema implementa tratamento robusto de erros em múltiplas camadas. No nível da API, interceptors do Axios capturam diferentes tipos de erro (erro de rede, erro de servidor, erro de configuração) e os convertem em mensagens de erro padronizadas. No nível dos hooks, tratamento de erro específico para cada operação fornece feedback contextual ao usuário.
+
+No nível dos componentes, estados de loading, erro e vazio são implementados consistentemente em todas as páginas. Loading states utilizam spinners animados e mensagens informativas para indicar operações em andamento. Estados de erro exibem mensagens específicas e opções de retry para operações falhadas. Estados vazios fornecem call-to-action apropriados para criação de novos recursos.
+
+O sistema implementa retry automático para operações críticas e fallback graceful para funcionalidades não disponíveis. A validação de dados é implementada tanto no front-end quanto no backend, garantindo integridade dos dados enviados e recebidos. O sistema de cache do React Query garante que dados sejam mantidos consistentes entre diferentes partes da aplicação.
+
+\section{Performance e Otimizações}
+
+O sistema implementa várias otimizações de performance para comunicação com a API. React Query é utilizado para cache automático de dados, reduzindo requisições desnecessárias e melhorando tempo de resposta da interface. Lazy loading de componentes e páginas reduz o tamanho inicial do bundle e melhora tempo de carregamento inicial.
+
+O sistema implementa debouncing para operações de busca e filtro, reduzindo número de requisições durante digitação do usuário. Paginação é implementada para listagens grandes, permitindo carregamento progressivo de dados sem impactar performance. O sistema utiliza optimistic updates para operações de criação e edição, fornecendo feedback imediato ao usuário enquanto requisições são processadas em background.
+
+A compressão de dados e cache de respostas HTTP são utilizados para reduzir tamanho de transferência e melhorar velocidade de comunicação. O sistema implementa cancelamento de requisições para operações que não são mais necessárias, liberando recursos do servidor e melhorando performance geral.
+
+\section{Segurança e Autenticação}
+
+O sistema atual implementa autenticação baseada em identificação de usuário através do parâmetro `userId` presente em todas as requisições. O usuário fixo definido nas constantes (`CURRENT_USER`) com ID `6848b6c8408bff83c12646ec` é utilizado para todas as operações, simplificando desenvolvimento e teste.
+
+A arquitetura está preparada para expansão para autenticação JWT, com estrutura de endpoints já organizada para suporte a múltiplos usuários. O sistema implementa validação de dados tanto no front-end quanto no backend, garantindo que apenas dados válidos sejam processados. As operações sensíveis como exclusão de recursos requerem confirmação explícita do usuário.
+
+O sistema não implementa atualmente controle de acesso baseado em roles (RBAC), mas a estrutura de endpoints permite fácil implementação de permissões granulares por usuário e projeto. A comunicação com a API utiliza HTTPS em produção para garantir segurança dos dados em trânsito.
+
+\section{Conclusão}
+
+A integração entre front-end e API na plataforma MLOps Flautim representa uma implementação robusta e bem estruturada de comunicação cliente-servidor. O sistema implementa conectividade completa com APIs reais para funcionalidades críticas como gerenciamento de projetos, pipelines, experimentos, modelos e dados, fornecendo uma experiência de usuário rica e funcional.
+
+A arquitetura modular e bem organizada facilita manutenção, escalabilidade e adição de novas funcionalidades. O uso de hooks customizados e React Query garante performance otimizada e experiência de usuário fluida. O tratamento robusto de erros e estados proporciona feedback claro e consistente aos usuários.
+
+As funcionalidades ainda com dados mockados representam oportunidades de melhoria para completar a integração, incluindo monitoramento de recursos, visualizações interativas, notificações em tempo real e sistema de colaboração. A arquitetura preparada para crescimento permite fácil expansão para suporte a múltiplos usuários, autenticação avançada e funcionalidades de colaboração em equipe.
+
+O foco em performance, segurança e usabilidade garante que a plataforma seja escalável e adequada para uso em ambientes de produção. A documentação completa e código bem estruturado facilitam manutenção e contribuições da comunidade de desenvolvedores.
+
+\end{document} 

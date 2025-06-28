@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { VscHome } from 'react-icons/vsc';
 import { BiHelpCircle } from 'react-icons/bi';
-import { FaParking } from 'react-icons/fa';
+import { BsPerson } from 'react-icons/bs';
 import { BsFolder } from 'react-icons/bs';
 
 const MainSidebar = () => {
@@ -30,8 +30,8 @@ const MainSidebar = () => {
                             <Link
                                 to={item.path}
                                 className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isActive(item.path)
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'text-white hover:bg-white/20'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'text-white hover:bg-white/20'
                                     }`}
                                 title={item.label}
                             >
@@ -48,7 +48,7 @@ const MainSidebar = () => {
                     className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/20"
                     title="Profile"
                 >
-                    <FaParking className="w-5 h-5" />
+                    <BsPerson className="w-5 h-5" />
                 </Link>
             </div>
         </aside>
