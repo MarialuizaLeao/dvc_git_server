@@ -65,10 +65,10 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 }
             } else {
                 const errorData = await response.json();
-                setError(errorData.detail || 'Failed to load parameters');
+                setError(errorData.detail || 'Falha ao carregar parâmetros');
             }
         } catch (err) {
-            setError('Failed to load parameters');
+            setError('Falha ao carregar parâmetros');
         } finally {
             setIsLoading(false);
         }
@@ -94,10 +94,10 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 setTimeout(() => setSuccess(null), 3000);
             } else {
                 const errorData = await response.json();
-                setError(errorData.detail || 'Failed to create parameter set');
+                setError(errorData.detail || 'Falha ao criar conjunto de parâmetros');
             }
         } catch (err) {
-            setError('Failed to create parameter set');
+            setError('Falha ao criar conjunto de parâmetros');
         } finally {
             setIsLoading(false);
         }
@@ -122,17 +122,17 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 setTimeout(() => setSuccess(null), 3000);
             } else {
                 const errorData = await response.json();
-                setError(errorData.detail || 'Failed to update parameter set');
+                setError(errorData.detail || 'Falha ao atualizar conjunto de parâmetros');
             }
         } catch (err) {
-            setError('Failed to update parameter set');
+            setError('Falha ao atualizar conjunto de parâmetros');
         } finally {
             setIsLoading(false);
         }
     };
 
     const deleteParameterSet = async () => {
-        if (!confirm('Are you sure you want to delete the current parameter set?')) {
+        if (!confirm('Tem certeza que deseja excluir o conjunto de parâmetros atual?')) {
             return;
         }
 
@@ -150,10 +150,10 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 setTimeout(() => setSuccess(null), 3000);
             } else {
                 const errorData = await response.json();
-                setError(errorData.detail || 'Failed to delete parameter set');
+                setError(errorData.detail || 'Falha ao excluir conjunto de parâmetros');
             }
         } catch (err) {
-            setError('Failed to delete parameter set');
+            setError('Falha ao excluir conjunto de parâmetros');
         } finally {
             setIsLoading(false);
         }
@@ -161,7 +161,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
 
     const validateParameters = async () => {
         if (!parameterSet) {
-            setError('No parameters to validate');
+            setError('Nenhum parâmetro para validar');
             return;
         }
 
@@ -179,9 +179,9 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
             if (response.ok) {
                 const data = await response.json();
                 if (data.valid) {
-                    setSuccess('All parameters are valid!');
+                    setSuccess('Todos os parâmetros são válidos!');
                 } else {
-                    setError(`Validation failed: ${data.errors.join(', ')}`);
+                    setError(`Validação falhou: ${data.errors.join(', ')}`);
                 }
                 setTimeout(() => {
                     setSuccess(null);
@@ -189,10 +189,10 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 }, 5000);
             } else {
                 const errorData = await response.json();
-                setError(errorData.detail || 'Failed to validate parameters');
+                setError(errorData.detail || 'Falha ao validar parâmetros');
             }
         } catch (err) {
-            setError('Failed to validate parameters');
+            setError('Falha ao validar parâmetros');
         } finally {
             setIsLoading(false);
         }
@@ -200,7 +200,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
 
     const exportParameters = async (format: string) => {
         if (!parameterSet) {
-            setError('No parameters to export');
+            setError('Nenhum parâmetro para exportar');
             return;
         }
 
@@ -216,14 +216,14 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 a.click();
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
-                setSuccess(`Parameters exported as ${format.toUpperCase()}`);
+                setSuccess(`Parâmetros exportados como ${format.toUpperCase()}`);
                 setTimeout(() => setSuccess(null), 3000);
             } else {
                 const errorData = await response.json();
-                setError(errorData.detail || 'Failed to export parameters');
+                setError(errorData.detail || 'Falha ao exportar parâmetros');
             }
         } catch (err) {
-            setError('Failed to export parameters');
+            setError('Falha ao exportar parâmetros');
         }
     };
 
@@ -247,10 +247,10 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 setTimeout(() => setSuccess(null), 3000);
             } else {
                 const errorData = await response.json();
-                setError(errorData.detail || 'Failed to import parameters');
+                setError(errorData.detail || 'Falha ao importar parâmetros');
             }
         } catch (err) {
-            setError('Failed to import parameters');
+            setError('Falha ao importar parâmetros');
         } finally {
             setIsLoading(false);
         }
@@ -273,7 +273,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
         return (
             <div className="flex items-center justify-center p-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                <span className="ml-2">Loading parameters...</span>
+                <span className="ml-2">Carregando parâmetros...</span>
             </div>
         );
     }
@@ -284,27 +284,27 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
             <div className="bg-white p-6 rounded-lg border border-gray-200">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h2 className="text-2xl font-bold text-gray-900">Parameter Management</h2>
-                        <p className="text-gray-600">Manage and configure parameters for your project</p>
+                        <h2 className="text-2xl font-bold text-gray-900">Gerenciamento de Parâmetros</h2>
+                        <p className="text-gray-600">Gerencie e configure parâmetros para seu projeto</p>
                     </div>
                     <div className="flex gap-2">
                         <button
                             onClick={() => setShowImportDialog(true)}
                             className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
                         >
-                            Import
+                            Importar
                         </button>
                         <button
                             onClick={() => setShowExportDialog(true)}
                             className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
                         >
-                            Export
+                            Exportar
                         </button>
                         <button
                             onClick={() => setShowCreateDialog(true)}
                             className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600 transition-colors"
                         >
-                            Create New
+                            Criar Novo
                         </button>
                     </div>
                 </div>
@@ -339,13 +339,13 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                                         onClick={saveChanges}
                                         className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
                                     >
-                                        Save Changes
+                                        Salvar Alterações
                                     </button>
                                     <button
                                         onClick={deleteParameterSet}
                                         className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                                     >
-                                        Delete
+                                        Excluir
                                     </button>
                                 </div>
                             </div>
@@ -399,22 +399,22 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                     ) : (
                         <div className="text-center py-12">
                             <div className="text-gray-400 text-6xl mb-4">⚙️</div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">No Parameters Set</h3>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum Parâmetro Configurado</h3>
                             <p className="text-gray-600 mb-4">
-                                Get started by creating a parameter set or importing from a file.
+                                Comece criando um conjunto de parâmetros ou importando de um arquivo.
                             </p>
                             <div className="flex gap-2 justify-center">
                                 <button
                                     onClick={() => setShowCreateDialog(true)}
                                     className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
                                 >
-                                    Create Parameter Set
+                                    Criar Conjunto de Parâmetros
                                 </button>
                                 <button
                                     onClick={() => setShowImportDialog(true)}
                                     className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
                                 >
-                                    Import from File
+                                    Importar de Arquivo
                                 </button>
                             </div>
                         </div>
@@ -427,7 +427,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
                         <div className="flex justify-between items-start mb-4">
-                            <h3 className="text-lg font-medium">Create New Parameter Set</h3>
+                            <h3 className="text-lg font-medium">Criar Novo Conjunto de Parâmetros</h3>
                             <button
                                 onClick={() => setShowCreateDialog(false)}
                                 className="text-gray-500 hover:text-gray-700"
@@ -447,7 +447,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                         }}>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Name</label>
+                                    <label className="block text-sm font-medium text-gray-700">Nome</label>
                                     <input
                                         type="text"
                                         name="name"
@@ -456,7 +456,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Description</label>
+                                    <label className="block text-sm font-medium text-gray-700">Descrição</label>
                                     <textarea
                                         name="description"
                                         rows={3}
@@ -469,13 +469,13 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                                         onClick={() => setShowCreateDialog(false)}
                                         className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
                                     >
-                                        Cancel
+                                        Cancelar
                                     </button>
                                     <button
                                         type="submit"
                                         className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                                     >
-                                        Create
+                                        Criar
                                     </button>
                                 </div>
                             </div>
@@ -488,7 +488,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg p-6 w-full max-w-md">
                         <div className="flex justify-between items-start mb-4">
-                            <h3 className="text-lg font-medium">Import Parameters</h3>
+                            <h3 className="text-lg font-medium">Importar Parâmetros</h3>
                             <button
                                 onClick={() => setShowImportDialog(false)}
                                 className="text-gray-500 hover:text-gray-700"
@@ -498,7 +498,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                         </div>
                         <div className="space-y-4">
                             <p className="text-sm text-gray-600">
-                                Upload a YAML, JSON, or ENV file to import parameters.
+                                Faça upload de um arquivo YAML, JSON ou ENV para importar parâmetros.
                             </p>
                             <input
                                 type="file"
@@ -516,7 +516,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                                     onClick={() => setShowImportDialog(false)}
                                     className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
                                 >
-                                    Cancel
+                                    Cancelar
                                 </button>
                             </div>
                         </div>
@@ -528,7 +528,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg p-6 w-full max-w-md">
                         <div className="flex justify-between items-start mb-4">
-                            <h3 className="text-lg font-medium">Export Parameters</h3>
+                            <h3 className="text-lg font-medium">Exportar Parâmetros</h3>
                             <button
                                 onClick={() => setShowExportDialog(false)}
                                 className="text-gray-500 hover:text-gray-700"
@@ -538,7 +538,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                         </div>
                         <div className="space-y-4">
                             <p className="text-sm text-gray-600">
-                                Choose a format to export your parameters.
+                                Escolha um formato para exportar seus parâmetros.
                             </p>
                             <div className="grid grid-cols-3 gap-2">
                                 <button
@@ -574,7 +574,7 @@ export default function ParameterManager({ userId, projectId }: ParameterManager
                                     onClick={() => setShowExportDialog(false)}
                                     className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
                                 >
-                                    Cancel
+                                    Cancelar
                                 </button>
                             </div>
                         </div>

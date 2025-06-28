@@ -23,7 +23,7 @@ const App = () => {
             <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<Home />} />
             <Route path="/projects" element={<Projects />} />
-            <Route path="/project/:id/data" element={<Project />} />
+            <Route path="/project/:id/info" element={<Project />} />
             <Route path="/project/:id/pipeline" element={<Pipeline />} />
             <Route path="/project/:id/data-management" element={<DataManagement />} />
             <Route path="/project/:id/models" element={<Models />} />

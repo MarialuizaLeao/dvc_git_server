@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDataManagement } from '../hooks/useDataManagement';
 import { useProjects } from '../hooks/useProjects';
@@ -8,7 +8,7 @@ import Card from '../components/Card';
 import AddDataSourceModal from '../components/AddDataSourceModal';
 import RemoteStorageModal from '../components/RemoteStorageModal';
 import ParameterManager from '../components/ParameterManager';
-import type { DataSource, RemoteStorage, DvcFile } from '../types/api';
+import type { CreateDataSourceRequest, CreateRemoteRequest } from '../types/api';
 
 // Code management types
 interface CodeFile {
@@ -24,11 +24,27 @@ interface CodeFile {
     git_commit_hash?: string;
 }
 
+interface CodeFileContent {
+    file_id: string;
+    file_path: string;
+    filename: string;
+    content: string;
+}
+
+interface CodeUploadResponse {
+    file_id: string;
+    message: string;
+}
+
+interface CodeFilesResponse {
+    code_files: CodeFile[];
+    total_count: number;
+}
+
 export default function DataManagement() {
-    const { id: projectId } = useParams();
+    const { id: projectId } = useParams<{ id: string }>();
     const [isDataSourceModalOpen, setIsDataSourceModalOpen] = useState(false);
     const [isRemoteStorageModalOpen, setIsRemoteStorageModalOpen] = useState(false);
-    const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 
     // Code management state
     const [codeFiles, setCodeFiles] = useState<CodeFile[]>([]);
@@ -49,10 +65,6 @@ export default function DataManagement() {
         getRemoteStorages,
         createRemoteStorage,
         deleteRemoteStorage,
-        trackData,
-        trackFiles,
-        getUrl,
-        setRemote,
         pushData,
         pullData,
         getDvcStatus
@@ -60,28 +72,24 @@ export default function DataManagement() {
 
     const { data: dataSources, isLoading: dataSourcesLoading } = getDataSources();
     const { data: remoteStorages, isLoading: remotesLoading } = getRemoteStorages();
-    const { data: dvcStatus, isLoading: dvcStatusLoading } = getDvcStatus();
+    const { isLoading: dvcStatusLoading } = getDvcStatus();
 
     const createDataSourceMutation = createDataSource;
     const deleteDataSourceMutation = deleteDataSource;
     const createRemoteStorageMutation = createRemoteStorage;
     const deleteRemoteStorageMutation = deleteRemoteStorage;
-    const trackDataMutation = trackData;
-    const trackFilesMutation = trackFiles;
-    const getUrlMutation = getUrl;
-    const setRemoteMutation = setRemote;
     const pushDataMutation = pushData;
     const pullDataMutation = pullData;
 
     // Code management functions
-    const loadCodeFiles = async () => {
+    const loadCodeFiles = async (): Promise<void> => {
         if (!projectId) return;
 
         setIsLoadingCodeFiles(true);
         try {
             const response = await fetch(API_ENDPOINTS.CODE_FILES(CURRENT_USER.id, projectId));
             if (response.ok) {
-                const data = await response.json();
+                const data: CodeFilesResponse = await response.json();
                 setCodeFiles(data.code_files || []);
             } else {
                 console.error('Failed to load code files');
@@ -93,7 +101,7 @@ export default function DataManagement() {
         }
     };
 
-    const handleUploadCodeFile = async (formData: FormData) => {
+    const handleUploadCodeFile = async (formData: FormData): Promise<void> => {
         if (!projectId) return;
 
         setIsUploadingCode(true);
@@ -104,29 +112,29 @@ export default function DataManagement() {
             });
 
             if (response.ok) {
-                const result = await response.json();
-                alert(`File uploaded successfully! File ID: ${result.file_id}`);
+                const result: CodeUploadResponse = await response.json();
+                alert(`Arquivo carregado com sucesso! ID do arquivo: ${result.file_id}`);
                 loadCodeFiles(); // Reload the code files list
                 setIsCodeUploadModalOpen(false);
             } else {
                 const error = await response.json();
-                alert(`Upload failed: ${error.detail}`);
+                alert(`Upload falhou: ${error.detail}`);
             }
         } catch (error) {
             console.error('Error uploading file:', error);
-            alert('Upload failed. Please try again.');
+            alert('Upload falhou. Por favor, tente novamente mais tarde.');
         } finally {
             setIsUploadingCode(false);
         }
     };
 
-    const handleViewCodeFile = async (file: CodeFile) => {
+    const handleViewCodeFile = async (file: CodeFile): Promise<void> => {
         if (!projectId) return;
 
         try {
             const response = await fetch(API_ENDPOINTS.CODE_FILE_CONTENT(CURRENT_USER.id, projectId, file._id));
             if (response.ok) {
-                const data = await response.json();
+                const data: CodeFileContent = await response.json();
                 setCodeFileContent(data.content);
                 setSelectedCodeFile(file);
                 setIsCodeViewModalOpen(true);
@@ -139,7 +147,7 @@ export default function DataManagement() {
         }
     };
 
-    const handleDeleteCodeFile = async (fileId: string) => {
+    const handleDeleteCodeFile = async (fileId: string): Promise<void> => {
         if (!projectId || !window.confirm('Are you sure you want to delete this code file?')) return;
 
         try {
@@ -160,7 +168,7 @@ export default function DataManagement() {
         }
     };
 
-    const handleCreateDataSource = async (data: any) => {
+    const handleCreateDataSource = async (data: CreateDataSourceRequest): Promise<void> => {
         try {
             await createDataSourceMutation.mutateAsync(data);
             setIsDataSourceModalOpen(false);
@@ -169,7 +177,7 @@ export default function DataManagement() {
         }
     };
 
-    const handleDeleteDataSource = async (sourceId: string) => {
+    const handleDeleteDataSource = async (sourceId: string): Promise<void> => {
         if (window.confirm('Are you sure you want to delete this data source?')) {
             try {
                 await deleteDataSourceMutation.mutateAsync(sourceId);
@@ -179,7 +187,7 @@ export default function DataManagement() {
         }
     };
 
-    const handleCreateRemoteStorage = async (data: any) => {
+    const handleCreateRemoteStorage = async (data: CreateRemoteRequest): Promise<void> => {
         try {
             await createRemoteStorageMutation.mutateAsync(data);
             setIsRemoteStorageModalOpen(false);
@@ -188,7 +196,7 @@ export default function DataManagement() {
         }
     };
 
-    const handleDeleteRemoteStorage = async (remoteId: string) => {
+    const handleDeleteRemoteStorage = async (remoteId: string): Promise<void> => {
         if (window.confirm('Are you sure you want to delete this remote storage?')) {
             try {
                 await deleteRemoteStorageMutation.mutateAsync(remoteId);
@@ -198,33 +206,7 @@ export default function DataManagement() {
         }
     };
 
-    const handleTrackData = async () => {
-        if (selectedFiles.length === 0) {
-            alert('Please select files to track');
-            return;
-        }
-        try {
-            await trackDataMutation.mutateAsync(selectedFiles);
-            setSelectedFiles([]);
-        } catch (error) {
-            console.error('Failed to track data:', error);
-        }
-    };
-
-    const handleTrackFiles = async () => {
-        if (selectedFiles.length === 0) {
-            alert('Please select files to track');
-            return;
-        }
-        try {
-            await trackFilesMutation.mutateAsync(selectedFiles);
-            setSelectedFiles([]);
-        } catch (error) {
-            console.error('Failed to track files:', error);
-        }
-    };
-
-    const handlePushData = async () => {
+    const handlePushData = async (): Promise<void> => {
         try {
             await pushDataMutation.mutateAsync();
             alert('Data pushed successfully!');
@@ -234,7 +216,7 @@ export default function DataManagement() {
         }
     };
 
-    const handlePullData = async () => {
+    const handlePullData = async (): Promise<void> => {
         try {
             await pullDataMutation.mutateAsync();
             alert('Data pulled successfully!');
@@ -244,7 +226,7 @@ export default function DataManagement() {
         }
     };
 
-    const getStatusColor = (status: string) => {
+    const getStatusColor = (status: string): string => {
         switch (status) {
             case 'completed':
                 return 'bg-green-100 text-green-800';
@@ -259,20 +241,7 @@ export default function DataManagement() {
         }
     };
 
-    const getFileStatusColor = (status: string) => {
-        switch (status) {
-            case 'tracked':
-                return 'bg-green-100 text-green-800';
-            case 'untracked':
-                return 'bg-yellow-100 text-yellow-800';
-            case 'modified':
-                return 'bg-blue-100 text-blue-800';
-            default:
-                return 'bg-gray-100 text-gray-800';
-        }
-    };
-
-    const formatFileSize = (bytes: number) => {
+    const formatFileSize = (bytes: number): string => {
         if (bytes === 0) return '0 Bytes';
         const k = 1024;
         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
@@ -280,7 +249,7 @@ export default function DataManagement() {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
-    const getFileTypeColor = (fileType: string) => {
+    const getFileTypeColor = (fileType: string): string => {
         switch (fileType) {
             case 'python':
                 return 'bg-blue-100 text-blue-800';
@@ -313,8 +282,8 @@ export default function DataManagement() {
     if (!project) {
         return (
             <div className="text-center py-12">
-                <h2 className="text-2xl font-semibold text-red-600">Project Not Found</h2>
-                <p className="text-gray-700 mt-2">The project you're looking for doesn't exist.</p>
+                <h2 className="text-2xl font-semibold text-red-600">Projeto não encontrado</h2>
+                <p className="text-gray-700 mt-2">O projeto que você procura não existe.</p>
             </div>
         );
     }
@@ -325,27 +294,27 @@ export default function DataManagement() {
             <div className="bg-white p-6 rounded-lg border border-gray-200">
                 <div className="flex justify-between items-start mb-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Data Management</h1>
-                        <p className="text-gray-500 mt-1">Manage datasets, storage, and code for {project.project_name}</p>
+                        <h1 className="text-2xl font-bold text-gray-900">Gerenciamento de Dados</h1>
+                        <p className="text-gray-500 mt-1">Gerencie conjuntos de dados, armazenamento e código para {project.project_name}</p>
                     </div>
                     <div className="flex space-x-3">
                         <button
                             onClick={() => setIsDataSourceModalOpen(true)}
                             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                         >
-                            Add Data Source
+                            Adicionar Fonte de Dados
                         </button>
                         <button
                             onClick={() => setIsRemoteStorageModalOpen(true)}
                             className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                         >
-                            Configure Storage
+                            Configurar Armazenamento
                         </button>
                         <button
                             onClick={() => setIsCodeUploadModalOpen(true)}
                             className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
                         >
-                            Upload Code
+                            Enviar Código
                         </button>
                     </div>
                 </div>
@@ -353,7 +322,7 @@ export default function DataManagement() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Data Sources */}
-                <Card title="Data Sources">
+                <Card title="Fontes de Dados">
                     <div className="space-y-4">
                         {dataSources && dataSources.length > 0 ? (
                             dataSources.map((source) => (
@@ -363,11 +332,11 @@ export default function DataManagement() {
                                             <h4 className="font-medium text-gray-900">{source.name}</h4>
                                             <p className="text-sm text-gray-600 mt-1">{source.description}</p>
                                             <div className="mt-2 text-xs text-gray-500">
-                                                <div><strong>Type:</strong> {source.type}</div>
-                                                <div><strong>Source:</strong> {source.source}</div>
-                                                <div><strong>Destination:</strong> {source.destination}</div>
+                                                <div><strong>Tipo:</strong> {source.type}</div>
+                                                <div><strong>Origem:</strong> {source.source}</div>
+                                                <div><strong>Destino:</strong> {source.destination}</div>
                                                 {source.size && (
-                                                    <div><strong>Size:</strong> {formatFileSize(source.size)}</div>
+                                                    <div><strong>Tamanho:</strong> {formatFileSize(source.size)}</div>
                                                 )}
                                             </div>
                                             <div className="mt-2">
@@ -380,19 +349,19 @@ export default function DataManagement() {
                                             onClick={() => handleDeleteDataSource(source._id)}
                                             className="text-red-500 hover:text-red-700 ml-2"
                                         >
-                                            Delete
+                                            Excluir
                                         </button>
                                     </div>
                                 </div>
                             ))
                         ) : (
                             <div className="text-center py-8 text-gray-500">
-                                <p>No data sources configured</p>
+                                <p>Nenhuma fonte de dados configurada</p>
                                 <button
                                     onClick={() => setIsDataSourceModalOpen(true)}
                                     className="mt-2 text-blue-500 hover:text-blue-700"
                                 >
-                                    Add your first data source
+                                    Adicione sua primeira fonte de dados
                                 </button>
                             </div>
                         )}
@@ -400,7 +369,7 @@ export default function DataManagement() {
                 </Card>
 
                 {/* Remote Storage */}
-                <Card title="Remote Storage">
+                <Card title="Armazenamento Remoto">
                     <div className="space-y-4">
                         {remoteStorages && remoteStorages.length > 0 ? (
                             remoteStorages.map((remote) => (
@@ -411,32 +380,32 @@ export default function DataManagement() {
                                                 <h4 className="font-medium text-gray-900">{remote.name}</h4>
                                                 {remote.is_default && (
                                                     <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                                                        Default
+                                                        Padrão
                                                     </span>
                                                 )}
                                             </div>
                                             <p className="text-sm text-gray-600 mt-1">{remote.url}</p>
                                             <div className="mt-2 text-xs text-gray-500">
-                                                <div><strong>Type:</strong> {remote.type.toUpperCase()}</div>
+                                                <div><strong>Tipo:</strong> {remote.type.toUpperCase()}</div>
                                             </div>
                                         </div>
                                         <button
                                             onClick={() => handleDeleteRemoteStorage(remote._id)}
                                             className="text-red-500 hover:text-red-700 ml-2"
                                         >
-                                            Delete
+                                            Excluir
                                         </button>
                                     </div>
                                 </div>
                             ))
                         ) : (
                             <div className="text-center py-8 text-gray-500">
-                                <p>No remote storage configured</p>
+                                <p>Nenhum armazenamento remoto configurado</p>
                                 <button
                                     onClick={() => setIsRemoteStorageModalOpen(true)}
                                     className="mt-2 text-green-500 hover:text-green-700"
                                 >
-                                    Configure storage
+                                    Configurar armazenamento
                                 </button>
                             </div>
                         )}
@@ -445,23 +414,23 @@ export default function DataManagement() {
             </div>
 
             {/* Code Management */}
-            <Card title="Code Management">
+            <Card title="Gerenciamento de Código">
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                        <h3 className="text-lg font-medium text-gray-900">Project Code Files</h3>
+                        <h3 className="text-lg font-medium text-gray-900">Arquivos de Código do Projeto</h3>
                         <div className="flex space-x-2">
                             <button
                                 onClick={loadCodeFiles}
                                 disabled={isLoadingCodeFiles}
                                 className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors disabled:opacity-50 text-sm"
                             >
-                                {isLoadingCodeFiles ? 'Loading...' : 'Refresh'}
+                                {isLoadingCodeFiles ? 'Carregando...' : 'Atualizar'}
                             </button>
                             <button
                                 onClick={() => setIsCodeUploadModalOpen(true)}
                                 className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors text-sm"
                             >
-                                Upload Code
+                                Enviar Código
                             </button>
                         </div>
                     </div>
@@ -469,7 +438,7 @@ export default function DataManagement() {
                     {isLoadingCodeFiles ? (
                         <div className="flex items-center justify-center py-8">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500"></div>
-                            <span className="ml-2 text-gray-600">Loading code files...</span>
+                            <span className="ml-2 text-gray-600">Carregando arquivos de código...</span>
                         </div>
                     ) : codeFiles.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -485,13 +454,13 @@ export default function DataManagement() {
                                                 onClick={() => handleViewCodeFile(file)}
                                                 className="text-blue-500 hover:text-blue-700 text-sm"
                                             >
-                                                View
+                                                Visualizar
                                             </button>
                                             <button
                                                 onClick={() => handleDeleteCodeFile(file._id)}
                                                 className="text-red-500 hover:text-red-700 text-sm"
                                             >
-                                                Delete
+                                                Excluir
                                             </button>
                                         </div>
                                     </div>
@@ -523,12 +492,12 @@ export default function DataManagement() {
                         </div>
                     ) : (
                         <div className="text-center py-8 text-gray-500">
-                            <p>No code files uploaded yet</p>
+                            <p>Nenhum arquivo de código enviado ainda</p>
                             <button
                                 onClick={() => setIsCodeUploadModalOpen(true)}
                                 className="mt-2 text-purple-500 hover:text-purple-700"
                             >
-                                Upload your first code file
+                                Envie seu primeiro arquivo de código
                             </button>
                         </div>
                     )}
@@ -567,7 +536,7 @@ export default function DataManagement() {
             {isCodeUploadModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                        <h3 className="text-lg font-medium mb-4">Upload Code File</h3>
+                        <h3 className="text-lg font-medium mb-4">Enviar Arquivo de Código</h3>
                         <form onSubmit={(e) => {
                             e.preventDefault();
                             const formData = new FormData(e.currentTarget);
@@ -575,7 +544,7 @@ export default function DataManagement() {
                         }}>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">File Path (e.g., src/main.py):</label>
+                                    <label className="block text-sm font-medium mb-1">Caminho do Arquivo (ex: src/main.py):</label>
                                     <input
                                         name="file_path"
                                         type="text"
@@ -585,26 +554,26 @@ export default function DataManagement() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">File Type:</label>
+                                    <label className="block text-sm font-medium mb-1">Tipo de Arquivo:</label>
                                     <select name="file_type" className="w-full p-2 border rounded">
                                         <option value="python">Python</option>
                                         <option value="jupyter">Jupyter Notebook</option>
-                                        <option value="config">Configuration</option>
-                                        <option value="documentation">Documentation</option>
-                                        <option value="other">Other</option>
+                                        <option value="config">Configuração</option>
+                                        <option value="documentation">Documentação</option>
+                                        <option value="other">Outro</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Description (optional):</label>
+                                    <label className="block text-sm font-medium mb-1">Descrição (opcional):</label>
                                     <input
                                         name="description"
                                         type="text"
                                         className="w-full p-2 border rounded"
-                                        placeholder="Brief description of the file"
+                                        placeholder="Breve descrição do arquivo"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Select File:</label>
+                                    <label className="block text-sm font-medium mb-1">Selecionar Arquivo:</label>
                                     <input
                                         name="file"
                                         type="file"
@@ -619,14 +588,14 @@ export default function DataManagement() {
                                     onClick={() => setIsCodeUploadModalOpen(false)}
                                     className="px-4 py-2 text-gray-600 hover:text-gray-800"
                                 >
-                                    Cancel
+                                    Cancelar
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isUploadingCode}
                                     className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
                                 >
-                                    {isUploadingCode ? 'Uploading...' : 'Upload'}
+                                    {isUploadingCode ? 'Enviando...' : 'Enviar'}
                                 </button>
                             </div>
                         </form>
@@ -658,7 +627,7 @@ export default function DataManagement() {
                                 onClick={() => setIsCodeViewModalOpen(false)}
                                 className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
                             >
-                                Close
+                                Fechar
                             </button>
                         </div>
                     </div>

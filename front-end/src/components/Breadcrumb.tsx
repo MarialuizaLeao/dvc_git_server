@@ -19,33 +19,48 @@ const Breadcrumb = memo(() => {
 
         // Base breadcrumb is always Home
         const crumbs = [
-            { path: '/home', label: 'Home' }
+            { path: '/home', label: 'Início' }
         ];
 
         if (pathSegments.includes('projects')) {
-            crumbs.push({ path: '/projects', label: 'Projects' });
+            crumbs.push({ path: '/projects', label: 'Projetos' });
         }
 
         if (pathSegments.includes('project')) {
             // Add project name breadcrumb
             if (project) {
                 crumbs.push({
-                    path: `/project/${projectId}/`,
-                    label: project.project_name || 'Untitled Project'
+                    path: `/project/${projectId}/info`,
+                    label: project.project_name || 'Projeto sem título'
                 });
             }
 
             // Add section breadcrumb if we're in a specific section
-            if (pathSegments.includes('data')) {
-                crumbs.push({ path: `/project/${projectId}/data`, label: 'Data' });
+            if (pathSegments.includes('info')) {
+                crumbs.push({ path: `/project/${projectId}/info`, label: 'Informações' });
+            }
+
+            if (pathSegments.includes('data-management')) {
+                crumbs.push({ path: `/project/${projectId}/data-management`, label: 'Gerenciamento de Dados' });
+            }
+
+            if (pathSegments.includes('pipeline')) {
+                crumbs.push({ path: `/project/${projectId}/pipeline`, label: 'Pipeline' });
             }
 
             if (pathSegments.includes('models')) {
-                crumbs.push({ path: `/project/${projectId}/models`, label: 'Models' });
+                crumbs.push({ path: `/project/${projectId}/models`, label: 'Modelos' });
             }
 
             if (pathSegments.includes('experiments')) {
-                crumbs.push({ path: `/project/${projectId}/experiments`, label: 'Experiments' });
+                crumbs.push({ path: `/project/${projectId}/experiments`, label: 'Experimentos' });
+            }
+
+            // Insert 'Projects' before the project name if not already present
+            const projectNameIdx = crumbs.findIndex(c => c.path.startsWith('/project/') && c.label !== 'Informações' && c.label !== 'Gerenciamento de Dados' && c.label !== 'Pipeline' && c.label !== 'Modelos' && c.label !== 'Experimentos');
+            const projectsIdx = crumbs.findIndex(c => c.label === 'Projetos');
+            if (projectNameIdx > 0 && projectsIdx === -1) {
+                crumbs.splice(projectNameIdx, 0, { path: '/projects', label: 'Projetos' });
             }
         }
 

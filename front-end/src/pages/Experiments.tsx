@@ -228,15 +228,15 @@ const Experiments = () => {
                                     <div className="text-purple-700 hover:text-purple-800 text-lg font-medium">
                                         {experiment.name}
                                         {experiment.rev === 'workspace' && (
-                                            <span className="ml-2 text-sm text-gray-500">(Current)</span>
+                                            <span className="ml-2 text-sm text-gray-500">(Atual)</span>
                                         )}
                                     </div>
                                     <div className="space-x-2">
                                         <button className="px-4 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors">
-                                            View
+                                            Visualizar
                                         </button>
                                         <button className="px-4 py-2 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors">
-                                            Compare
+                                            Comparar
                                         </button>
                                     </div>
                                 </div>
@@ -249,9 +249,9 @@ const Experiments = () => {
                                         </div>
                                     </div>
                                     <div>
-                                        <span className="text-sm text-gray-500">Date:</span>
+                                        <span className="text-sm text-gray-500">Data:</span>
                                         <div className="text-sm text-gray-700">
-                                            {experiment.timestamp ? new Date(experiment.timestamp).toLocaleString() : 'N/A'}
+                                            {experiment.timestamp ? new Date(experiment.timestamp).toLocaleString() : 'N/D'}
                                         </div>
                                     </div>
                                 </div>
@@ -259,7 +259,7 @@ const Experiments = () => {
                                 {/* Parameters */}
                                 {Object.keys(experiment.params).length > 0 && (
                                     <div className="mb-4">
-                                        <h4 className="text-sm font-medium text-gray-700 mb-2">Parameters:</h4>
+                                        <h4 className="text-sm font-medium text-gray-700 mb-2">Parâmetros:</h4>
                                         <div className="grid grid-cols-2 gap-2 text-sm">
                                             {Object.entries(experiment.params).map(([key, value]: [string, any]) => (
                                                 <div key={key} className="flex justify-between">
@@ -274,7 +274,7 @@ const Experiments = () => {
                                 {/* Metrics */}
                                 {Object.keys(experiment.metrics).length > 0 && (
                                     <div>
-                                        <h4 className="text-sm font-medium text-gray-700 mb-2">Metrics:</h4>
+                                        <h4 className="text-sm font-medium text-gray-700 mb-2">Métricas:</h4>
                                         <div className="grid grid-cols-2 gap-4">
                                             {Object.entries(experiment.metrics).map(([metricName, metricData]: [string, any]) => (
                                                 <div key={metricName} className="bg-gray-50 p-3 rounded">

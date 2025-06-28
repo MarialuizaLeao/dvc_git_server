@@ -146,8 +146,8 @@ export default function Pipeline() {
     if (!project) {
         return (
             <div className="text-center py-12">
-                <h2 className="text-2xl font-semibold text-red-600">Project Not Found</h2>
-                <p className="text-gray-700 mt-2">The project you're looking for doesn't exist.</p>
+                <h2 className="text-2xl font-semibold text-red-600">Projeto não encontrado</h2>
+                <p className="text-gray-700 mt-2">O projeto que você procura não existe.</p>
             </div>
         );
     }
@@ -158,8 +158,8 @@ export default function Pipeline() {
             <div className="bg-white p-6 rounded-lg border border-gray-200">
                 <div className="flex justify-between items-start mb-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Pipeline Management</h1>
-                        <p className="text-gray-500 mt-1">Manage pipeline for {project.project_name}</p>
+                        <h1 className="text-2xl font-bold text-gray-900">Gerenciamento de Pipeline</h1>
+                        <p className="text-gray-500 mt-1">Gerencie o pipeline para {project.project_name}</p>
                     </div>
                     <div className="flex space-x-3">
                         {pipeline ? (
@@ -169,13 +169,13 @@ export default function Pipeline() {
                                     disabled={isExecuting}
                                     className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
                                 >
-                                    {isExecuting ? 'Executing...' : 'Execute Pipeline'}
+                                    {isExecuting ? 'Executando...' : 'Executar Pipeline'}
                                 </button>
                                 <button
                                     onClick={() => setIsConfigModalOpen(true)}
                                     className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                                 >
-                                    Edit Pipeline
+                                    Editar Pipeline
                                 </button>
                             </>
                         ) : (
@@ -183,7 +183,7 @@ export default function Pipeline() {
                                 onClick={() => setIsConfigModalOpen(true)}
                                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                             >
-                                Create Pipeline
+                                Criar Pipeline
                             </button>
                         )}
                     </div>
@@ -200,7 +200,7 @@ export default function Pipeline() {
                                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     }`}
                             >
-                                Overview
+                                Visão Geral
                             </button>
                             <button
                                 onClick={() => setActiveTab('executions')}
@@ -209,7 +209,7 @@ export default function Pipeline() {
                                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     }`}
                             >
-                                Execution History
+                                Histórico de Execuções
                             </button>
                         </nav>
                     </div>
@@ -226,13 +226,13 @@ export default function Pipeline() {
                                 <Card title={pipeline.name}>
                                     <div className="space-y-4">
                                         <div>
-                                            <p className="text-gray-600">{pipeline.description || 'No description'}</p>
+                                            <p className="text-gray-600">{pipeline.description || 'Sem descrição'}</p>
                                             <div className="flex items-center mt-2">
                                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pipeline.is_active)}`}>
-                                                    {pipeline.is_active ? 'Active' : 'Inactive'}
+                                                    {pipeline.is_active ? 'Ativo' : 'Inativo'}
                                                 </span>
                                                 <span className="ml-2 text-sm text-gray-500">
-                                                    {pipeline.stages.length} stages
+                                                    {pipeline.stages.length} estágios
                                                 </span>
                                             </div>
                                         </div>
@@ -240,7 +240,7 @@ export default function Pipeline() {
                                         {/* Last Execution Status */}
                                         {pipeline.last_execution && (
                                             <div className="border-t pt-4">
-                                                <h4 className="text-sm font-medium text-gray-700 mb-2">Last Execution</h4>
+                                                <h4 className="text-sm font-medium text-gray-700 mb-2">Última Execução</h4>
                                                 <div className="bg-gray-50 p-3 rounded-lg">
                                                     <div className="flex items-center justify-between">
                                                         <div>
@@ -257,7 +257,7 @@ export default function Pipeline() {
                                                     </div>
                                                     {pipeline.last_execution.error && (
                                                         <div className="mt-2 text-sm text-red-600">
-                                                            Error: {pipeline.last_execution.error}
+                                                            Erro: {pipeline.last_execution.error}
                                                         </div>
                                                     )}
                                                 </div>
@@ -266,7 +266,7 @@ export default function Pipeline() {
 
                                         {/* Pipeline Stages */}
                                         <div>
-                                            <h4 className="text-sm font-medium text-gray-700 mb-3">Pipeline Stages</h4>
+                                            <h4 className="text-sm font-medium text-gray-700 mb-3">Estágios do Pipeline</h4>
                                             <div className="space-y-3">
                                                 {pipeline.stages.map((stage, index) => (
                                                     <div key={index} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
@@ -274,18 +274,18 @@ export default function Pipeline() {
                                                         <div className="flex-1">
                                                             <div className="flex items-center justify-between">
                                                                 <h5 className="font-medium text-gray-900">{stage.name}</h5>
-                                                                <span className="text-xs text-gray-500">Stage {index + 1}</span>
+                                                                <span className="text-xs text-gray-500">Estágio {index + 1}</span>
                                                             </div>
                                                             {stage.description && (
                                                                 <p className="text-sm text-gray-600 mt-1">{stage.description}</p>
                                                             )}
                                                             <div className="mt-2 text-xs text-gray-500">
-                                                                <div><strong>Command:</strong> {stage.command}</div>
+                                                                <div><strong>Comando:</strong> {stage.command}</div>
                                                                 {stage.deps.length > 0 && (
-                                                                    <div><strong>Dependencies:</strong> {stage.deps.join(', ')}</div>
+                                                                    <div><strong>Dependências:</strong> {stage.deps.join(', ')}</div>
                                                                 )}
                                                                 {stage.outs.length > 0 && (
-                                                                    <div><strong>Outputs:</strong> {stage.outs.join(', ')}</div>
+                                                                    <div><strong>Saídas:</strong> {stage.outs.join(', ')}</div>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -301,31 +301,31 @@ export default function Pipeline() {
                                                 disabled={isExecuting}
                                                 className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 transition-colors disabled:opacity-50"
                                             >
-                                                {isExecuting ? 'Executing...' : 'Execute'}
+                                                {isExecuting ? 'Executando...' : 'Executar'}
                                             </button>
                                             <button
                                                 onClick={handleRecoverPipeline}
                                                 className="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600 transition-colors"
                                             >
-                                                Recover
+                                                Recuperar
                                             </button>
                                             <button
                                                 onClick={() => setIsConfigModalOpen(true)}
                                                 className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
                                             >
-                                                Edit
+                                                Editar
                                             </button>
                                             <button
                                                 onClick={handleDeletePipeline}
                                                 className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"
                                             >
-                                                Delete
+                                                Excluir
                                             </button>
                                         </div>
 
                                         {pipeline.created_at && (
                                             <div className="text-xs text-gray-500 pt-2 border-t">
-                                                Created: {new Date(pipeline.created_at).toLocaleDateString()}
+                                                Criado: {new Date(pipeline.created_at).toLocaleDateString()}
                                             </div>
                                         )}
                                     </div>
@@ -334,25 +334,25 @@ export default function Pipeline() {
 
                             {/* Pipeline Info */}
                             <div className="lg:col-span-1">
-                                <Card title="Pipeline Information">
+                                <Card title="Informações do Pipeline">
                                     <div className="space-y-4">
                                         <div>
-                                            <h4 className="text-sm font-medium text-gray-700">Version</h4>
+                                            <h4 className="text-sm font-medium text-gray-700">Versão</h4>
                                             <p className="text-sm text-gray-900">{pipeline.version}</p>
                                         </div>
                                         <div>
                                             <h4 className="text-sm font-medium text-gray-700">Status</h4>
                                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(pipeline.is_active)}`}>
-                                                {pipeline.is_active ? 'Active' : 'Inactive'}
+                                                {pipeline.is_active ? 'Ativo' : 'Inativo'}
                                             </span>
                                         </div>
                                         <div>
-                                            <h4 className="text-sm font-medium text-gray-700">Stages</h4>
-                                            <p className="text-sm text-gray-900">{pipeline.stages.length} stages configured</p>
+                                            <h4 className="text-sm font-medium text-gray-700">Estágios</h4>
+                                            <p className="text-sm text-gray-900">{pipeline.stages.length} estágios configurados</p>
                                         </div>
                                         {pipeline.updated_at && (
                                             <div>
-                                                <h4 className="text-sm font-medium text-gray-700">Last Updated</h4>
+                                                <h4 className="text-sm font-medium text-gray-700">Última Atualização</h4>
                                                 <p className="text-sm text-gray-900">{new Date(pipeline.updated_at).toLocaleDateString()}</p>
                                             </div>
                                         )}
@@ -363,7 +363,7 @@ export default function Pipeline() {
                     )}
 
                     {activeTab === 'executions' && (
-                        <Card title="Pipeline Execution History">
+                        <Card title="Histórico de Execução do Pipeline">
                             {executionsLoading ? (
                                 <div className="flex items-center justify-center h-32">
                                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
@@ -378,7 +378,7 @@ export default function Pipeline() {
                                                         {execution.status}
                                                     </span>
                                                     <span className="text-sm font-medium text-gray-900">
-                                                        Execution {execution.execution_id}
+                                                        Execução {execution.execution_id}
                                                     </span>
                                                 </div>
                                                 <div className="text-sm text-gray-500">
@@ -388,26 +388,26 @@ export default function Pipeline() {
 
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                                 <div>
-                                                    <span className="text-gray-500">Duration:</span>
+                                                    <span className="text-gray-500">Duração:</span>
                                                     <div className="font-medium">{formatDuration(execution.duration)}</div>
                                                 </div>
                                                 <div>
-                                                    <span className="text-gray-500">Models Produced:</span>
+                                                    <span className="text-gray-500">Modelos Produzidos:</span>
                                                     <div className="font-medium">{execution.models_produced.length}</div>
                                                 </div>
                                                 <div>
-                                                    <span className="text-gray-500">Output Files:</span>
+                                                    <span className="text-gray-500">Arquivos de Saída:</span>
                                                     <div className="font-medium">{execution.output_files.length}</div>
                                                 </div>
                                                 <div>
-                                                    <span className="text-gray-500">Parameters:</span>
+                                                    <span className="text-gray-500">Parâmetros:</span>
                                                     <div className="font-medium">{Object.keys(execution.parameters_used).length}</div>
                                                 </div>
                                             </div>
 
                                             {execution.models_produced.length > 0 && (
                                                 <div className="mt-3">
-                                                    <span className="text-sm font-medium text-gray-700">Models Produced:</span>
+                                                    <span className="text-sm font-medium text-gray-700">Modelos Produzidos:</span>
                                                     <div className="mt-1 space-y-1">
                                                         {execution.models_produced.map((modelPath, index) => (
                                                             <div key={index} className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
@@ -420,7 +420,7 @@ export default function Pipeline() {
 
                                             {execution.error_message && (
                                                 <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded">
-                                                    <span className="text-sm font-medium text-red-700">Error:</span>
+                                                    <span className="text-sm font-medium text-red-700">Erro:</span>
                                                     <div className="text-sm text-red-600 mt-1">{execution.error_message}</div>
                                                 </div>
                                             )}
@@ -429,7 +429,7 @@ export default function Pipeline() {
                                 </div>
                             ) : (
                                 <div className="text-center py-8 text-gray-500">
-                                    No pipeline executions found.
+                                    Nenhuma execução de pipeline encontrada.
                                 </div>
                             )}
                         </Card>
@@ -437,13 +437,13 @@ export default function Pipeline() {
                 </div>
             ) : (
                 <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-700 mb-2">No Pipeline Configured</h3>
-                    <p className="text-gray-500 mb-4">Create a pipeline to automate your data processing workflow!</p>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-2">Nenhum Pipeline Configurado</h3>
+                    <p className="text-gray-500 mb-4">Crie um pipeline para automatizar seu fluxo de processamento de dados!</p>
                     <button
                         onClick={() => setIsConfigModalOpen(true)}
                         className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
                     >
-                        Create Pipeline
+                        Criar Pipeline
                     </button>
                 </div>
             )}

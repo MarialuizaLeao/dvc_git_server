@@ -16,11 +16,11 @@ const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
     };
 
     const mainMenuItems = [
-        { path: `/project/${projectId}/data`, label: 'Project Data', icon: VscFile },
-        { path: `/project/${projectId}/data-management`, label: 'Data Management', icon: FiDatabase },
+        { path: `/project/${projectId}/info`, label: 'Informações do Projeto', icon: VscFile },
+        { path: `/project/${projectId}/data-management`, label: 'Gerenciamento de Dados', icon: FiDatabase },
         { path: `/project/${projectId}/pipeline`, label: 'Pipeline', icon: TbGitBranch },
-        { path: `/project/${projectId}/models`, label: 'Models', icon: TbAtom },
-        { path: `/project/${projectId}/experiments`, label: 'Experiments', icon: GoBeaker },
+        { path: `/project/${projectId}/models`, label: 'Modelos', icon: TbAtom },
+        { path: `/project/${projectId}/experiments`, label: 'Experimentos', icon: GoBeaker },
     ];
 
     return (

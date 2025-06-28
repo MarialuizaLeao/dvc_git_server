@@ -12,25 +12,25 @@ const Home = () => {
                     to="/projects"
                     className="p-6 bg-white rounded-lg border border-gray-200 hover:border-blue-500 transition-colors"
                 >
-                    <h2 className="text-xl font-semibold mb-2">Projects</h2>
+                    <h2 className="text-xl font-semibold mb-2">Projetos</h2>
                     <p className="text-gray-600">
-                        View and manage your machine learning projects
+                        Visualize e gerencie seus projetos de aprendizado de máquina
                     </p>
                 </Link>
 
                 <div className="p-6 bg-white rounded-lg border border-gray-200">
-                    <h2 className="text-xl font-semibold mb-2">Recent Activity</h2>
+                    <h2 className="text-xl font-semibold mb-2">Atividade Recente</h2>
                     <p className="text-gray-600">
-                        No recent activity
+                        Nenhuma atividade recente
                     </p>
                 </div>
 
                 <div className="p-6 bg-white rounded-lg border border-gray-200">
-                    <h2 className="text-xl font-semibold mb-2">Quick Stats</h2>
+                    <h2 className="text-xl font-semibold mb-2">Estatísticas Rápidas</h2>
                     <div className="space-y-2">
-                        <p className="text-gray-600">Total Projects: 0</p>
-                        <p className="text-gray-600">Active Experiments: 0</p>
-                        <p className="text-gray-600">Deployed Models: 0</p>
+                        <p className="text-gray-600">Total de Projetos: 0</p>
+                        <p className="text-gray-600">Experimentos Ativos: 0</p>
+                        <p className="text-gray-600">Modelos Implantados: 0</p>
                     </div>
                 </div>
             </div>

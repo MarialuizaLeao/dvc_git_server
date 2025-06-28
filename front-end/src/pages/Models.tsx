@@ -93,7 +93,7 @@ export default function Models() {
     };
 
     const formatDate = (dateString: string): string => {
-        return new Date(dateString).toLocaleDateString('en-US', {
+        return new Date(dateString).toLocaleDateString('pt-BR', {
             year: 'numeric',
             month: 'short',
             day: 'numeric',
@@ -122,8 +122,7 @@ export default function Models() {
     };
 
     const handleDeleteModelPath = async (pathId: string) => {
-        // Model paths from DVC pipeline cannot be deleted manually
-        console.log('Model paths from DVC pipeline cannot be deleted manually');
+        console.log('Caminhos de modelo do pipeline DVC não podem ser excluídos manualmente');
     };
 
     const handleCreateEvaluation = async (modelPath: string) => {
@@ -151,17 +150,17 @@ export default function Models() {
             const res = await modelApi.downloadModel(userId, projectId!, model.id!);
             window.open(`/static/${res.file_path}`, '_blank');
         } catch (err: any) {
-            alert(err.message || 'Failed to download model');
+            alert(err.message || 'Falha ao baixar o modelo');
         }
     };
 
     const handleDeleteModel = async (model: Model) => {
-        if (!window.confirm(`Are you sure you want to delete ${model.name}?`)) return;
+        if (!window.confirm(`Tem certeza que deseja excluir ${model.name}?`)) return;
         setDeleteLoading(model.id!);
         try {
             await deleteModelMutation.mutateAsync(model.id!);
         } catch (err: any) {
-            alert(err.message || 'Failed to delete model');
+            alert(err.message || 'Falha ao excluir o modelo');
         } finally {
             setDeleteLoading(null);
         }
@@ -189,24 +188,24 @@ export default function Models() {
         // For now, showing a placeholder
         return (
             <div className="mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Evaluation Plots</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Gráficos de Avaliação</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-gray-50 p-4 rounded-lg border">
                         <div className="flex items-center space-x-2 mb-2">
                             <TbChartLine className="h-4 w-4 text-blue-600" />
-                            <span className="text-sm font-medium">Accuracy Over Time</span>
+                            <span className="text-sm font-medium">Acurácia ao Longo do Tempo</span>
                         </div>
                         <div className="h-32 bg-white rounded border flex items-center justify-center text-gray-500 text-sm">
-                            Plot visualization would appear here
+                            A visualização do gráfico aparecerá aqui
                         </div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-lg border">
                         <div className="flex items-center space-x-2 mb-2">
                             <TbChartBar className="h-4 w-4 text-green-600" />
-                            <span className="text-sm font-medium">Metrics Comparison</span>
+                            <span className="text-sm font-medium">Comparação de Métricas</span>
                         </div>
                         <div className="h-32 bg-white rounded border flex items-center justify-center text-gray-500 text-sm">
-                            Plot visualization would appear here
+                            A visualização do gráfico aparecerá aqui
                         </div>
                     </div>
                 </div>
@@ -227,9 +226,9 @@ export default function Models() {
             {/* Header */}
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Models</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Modelos</h1>
                     <p className="text-gray-600 mt-1">
-                        Manage and track your trained machine learning models
+                        Gerencie e acompanhe seus modelos de aprendizado de máquina treinados
                     </p>
                 </div>
             </div>
@@ -237,7 +236,7 @@ export default function Models() {
             {/* Content */}
             <div className="space-y-6">
                 {/* Current Model Results */}
-                <Card title="Current Model Results">
+                <Card title="Resultados do Modelo Atual">
                     {pathsLoading ? (
                         <div className="flex items-center justify-center h-32">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
@@ -265,7 +264,7 @@ export default function Models() {
                                                     className="text-blue-600 hover:text-blue-800 text-sm font-medium self-end"
                                                     style={{ visibility: latestEvaluation ? 'visible' : 'hidden' }}
                                                 >
-                                                    View Details
+                                                    Ver Detalhes
                                                 </button>
                                                 {!path.model_name.toLowerCase().includes('train') && !path.model_path.toLowerCase().includes('train') && (
                                                     <button
@@ -276,12 +275,12 @@ export default function Models() {
                                                         {evaluating === path.model_path ? (
                                                             <>
                                                                 <TbClock className="h-4 w-4 mr-2" />
-                                                                Running...
+                                                                Executando...
                                                             </>
                                                         ) : (
                                                             <>
                                                                 <TbPlayerPlay className="h-4 w-4 mr-2" />
-                                                                Evaluate
+                                                                Avaliar
                                                             </>
                                                         )}
                                                     </button>
@@ -297,7 +296,7 @@ export default function Models() {
                                                             {latestEvaluation.status}
                                                         </span>
                                                         <span className="text-sm text-gray-600">
-                                                            Last evaluated: {formatDate(latestEvaluation.evaluation_date)}
+                                                            Última avaliação: {formatDate(latestEvaluation.evaluation_date)}
                                                         </span>
                                                     </div>
                                                 </div>
