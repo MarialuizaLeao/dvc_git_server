@@ -24,4 +24,3 @@ A common CLI workflow includes:
 | Share data and ML models          | | ``$ dvc remote add myremote -d s3://mybucket/image_cnn``                                         |
 |                                   | | ``$ dvc push``                                                                                   |
 +-----------------------------------+----------------------------------------------------------------------------------------------------+
-
