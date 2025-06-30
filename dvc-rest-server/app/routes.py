@@ -61,6 +61,214 @@ import os
 import asyncio
 import json
 import yaml
+import re
+
+# Helper function for model identification
+async def identify_models_produced(user_id: str, project_id: str, start_time: str) -> List[str]:
+    """
+    Identify models produced during pipeline execution by scanning the project directory.
+    
+    Args:
+        user_id (str): The user ID
+        project_id (str): The project ID
+        start_time (str): ISO format timestamp of when execution started
+    
+    Returns:
+        List[str]: List of relative paths to model files that were created/modified during execution
+    """
+    REPO_ROOT = "/home/marialuiza/Documents/faculdade/9periodo/poc/git_repo"
+    project_path = os.path.join(REPO_ROOT, user_id, project_id)
+    models_produced = []
+    
+    if os.path.exists(project_path):
+        model_extensions = ['.pkl', '.joblib', '.h5', '.hdf5', '.pb', '.onnx', '.pt', '.pth', '.model', '.bin']
+        for root, dirs, files in os.walk(project_path):
+            for file in files:
+                if any(file.endswith(ext) for ext in model_extensions):
+                    file_path = os.path.join(root, file)
+                    # Check if file exists and is accessible
+                    if os.path.exists(file_path) and os.access(file_path, os.R_OK):
+                        try:
+                            # Get file modification time
+                            mtime = os.path.getmtime(file_path)
+                            start_timestamp = datetime.fromisoformat(start_time).timestamp()
+                            
+                            # Check if file was modified after execution started
+                            if mtime >= start_timestamp:
+                                # Convert to relative path
+                                rel_path = os.path.relpath(file_path, project_path)
+                                models_produced.append(rel_path)
+                        except (OSError, ValueError) as e:
+                            print(f"Warning: Could not process file {file_path}: {e}")
+                            continue
+    
+    return models_produced
+
+async def parse_execution_output_and_stats(user_id: str, project_id: str, execution_result: str, parameters_used: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse execution output and calculate accurate pipeline statistics.
+    
+    Args:
+        user_id (str): The user ID
+        project_id (str): The project ID
+        execution_result (str): Raw execution output from DVC
+        parameters_used (Dict[str, Any]): Parameters used in execution
+    
+    Returns:
+        Dict[str, Any]: Structured execution output with accurate statistics
+    """
+    print(f"[parse_execution_output_and_stats] user_id={user_id}, project_id={project_id}")
+    print(f"[parse_execution_output_and_stats] execution_result=\n{execution_result!r}")
+    
+    # Get pipeline stages to understand the pipeline structure
+    pipeline_stages = await get_pipeline_stages(user_id, project_id)
+    total_stages = len(pipeline_stages.get('stages', {}))
+    print(f"[parse_execution_output_and_stats] total_stages={total_stages}")
+    print(f"[parse_execution_output_and_stats] pipeline_stages={pipeline_stages}")
+    
+    # Initialize execution output structure
+    execution_output = {
+        "stdout": execution_result,
+        "stderr": "",
+        "structured_logs": [],
+        "summary": {
+            "stages_executed": 0,
+            "stages_skipped": 0,
+            "stages_failed": 0,
+            "total_stages": total_stages
+        }
+    }
+    
+    # Track executed and skipped stages
+    executed_stages = set()
+    skipped_stages = set()
+    failed_stages = set()
+    
+    # Parse DVC repro output to extract structured information
+    if execution_result:
+        lines = execution_result.split('\n')
+        print(f"[parse_execution_output_and_stats] lines={lines}")
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # Recognize skipped stages: Stage 'name' didn't change, skipping
+            skipped_match = re.match(r"Stage ['\"]([^'\"]+)['\"] didn't change, skipping", line)
+            if skipped_match:
+                stage_name = skipped_match.group(1)
+                skipped_stages.add(stage_name)
+                print(f"[parse_execution_output_and_stats] Skipped stage: {stage_name}")
+                execution_output["structured_logs"].append({
+                    "type": "stage_skipped",
+                    "message": line,
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
+            # Ignore file.dvc skipping lines
+            if re.match(r"'.+\.dvc' didn't change, skipping", line):
+                print(f"[parse_execution_output_and_stats] Info: {line}")
+                execution_output["structured_logs"].append({
+                    "type": "info",
+                    "message": line,
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
+            # Recognize executed stages (existing logic)
+            if any(pattern in line for pattern in ['Running stage', 'Reproducing stage', 'Executing stage']):
+                stage_match = re.search(r"(?:Running|Reproducing|Executing) stage ['\"]([^'\"]+)['\"]", line)
+                if stage_match:
+                    stage_name = stage_match.group(1)
+                    executed_stages.add(stage_name)
+                    print(f"[parse_execution_output_and_stats] Executed stage: {stage_name}")
+                execution_output["structured_logs"].append({
+                    "type": "stage_start",
+                    "message": line,
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
+            # Recognize skipped stages (existing logic)
+            if any(pattern in line for pattern in ['is up to date', 'up-to-date', 'cached']):
+                stage_match = re.search(r"Stage ['\"]([^'\"]+)['\"] (?:is up to date|up-to-date|cached)", line)
+                if stage_match:
+                    stage_name = stage_match.group(1)
+                    skipped_stages.add(stage_name)
+                    print(f"[parse_execution_output_and_stats] Skipped stage: {stage_name}")
+                execution_output["structured_logs"].append({
+                    "type": "stage_skipped",
+                    "message": line,
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
+            # Recognize errors
+            if any(pattern in line for pattern in ['ERROR', 'Failed', 'failed', 'Error']):
+                stage_match = re.search(r"stage ['\"]([^'\"]+)['\"]", line, re.IGNORECASE)
+                if stage_match:
+                    stage_name = stage_match.group(1)
+                    failed_stages.add(stage_name)
+                    print(f"[parse_execution_output_and_stats] Failed stage: {stage_name}")
+                execution_output["structured_logs"].append({
+                    "type": "error",
+                    "message": line,
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
+            # Recognize pipeline status
+            if any(pattern in line for pattern in ['Pipeline is up to date', 'Nothing to reproduce', 'No changes', 'Data and pipelines are up to date']):
+                print(f"[parse_execution_output_and_stats] Pipeline status: {line}")
+                execution_output["structured_logs"].append({
+                    "type": "pipeline_status",
+                    "message": line,
+                    "timestamp": datetime.now().isoformat()
+                })
+                continue
+            # Default: info
+            print(f"[parse_execution_output_and_stats] Info: {line}")
+            execution_output["structured_logs"].append({
+                "type": "info",
+                "message": line,
+                "timestamp": datetime.now().isoformat()
+            })
+    
+    # Update summary with accurate counts
+    print(f"[parse_execution_output_and_stats] Executed stages: {executed_stages}")
+    print(f"[parse_execution_output_and_stats] Skipped stages: {skipped_stages}")
+    print(f"[parse_execution_output_and_stats] Failed stages: {failed_stages}")
+    execution_output["summary"]["stages_executed"] = len(executed_stages)
+    execution_output["summary"]["stages_skipped"] = len(skipped_stages)
+    execution_output["summary"]["stages_failed"] = len(failed_stages)
+    
+    # Calculate output files from pipeline stages
+    output_files = []
+    for stage_name, stage_info in pipeline_stages.get('stages', {}).items():
+        if stage_name in executed_stages:
+            outs = stage_info.get('outs', [])
+            if isinstance(outs, list):
+                output_files.extend(outs)
+            elif isinstance(outs, str):
+                output_files.append(outs)
+    print(f"[parse_execution_output_and_stats] Output files: {output_files}")
+    
+    # Calculate models produced from output files
+    models_produced = []
+    for output_file in output_files:
+        if any(output_file.endswith(ext) for ext in ['.pkl', '.joblib', '.h5', '.hdf5', '.pb', '.onnx', '.pt', '.pth', '.model', '.bin']):
+            models_produced.append(output_file)
+    print(f"[parse_execution_output_and_stats] Models produced: {models_produced}")
+    
+    # Add additional statistics
+    execution_output["pipeline_stats"] = {
+        "output_files": output_files,
+        "models_produced": models_produced,
+        "parameters_used": parameters_used,
+        "executed_stages": list(executed_stages),
+        "skipped_stages": list(skipped_stages),
+        "failed_stages": list(failed_stages)
+    }
+    print(f"[parse_execution_output_and_stats] Summary: {execution_output['summary']}")
+    print(f"[parse_execution_output_and_stats] Pipeline stats: {execution_output['pipeline_stats']}")
+    
+    return execution_output
 
 router = APIRouter()
 
@@ -425,6 +633,11 @@ async def plots_diff(user_id: str, project_id: str, request: PlotsDiffRequest):
 @router.post("/{user_id}/{project_id}/exp/run")
 async def run_experiment(user_id: str, project_id:str, request: RunExperimentRequest):
     try:
+        print(f"Creating experiment for user {user_id}, project {project_id}")
+        print(f"Experiment request: {request.dict()}")
+        print(f"Set param data: {request.set_param}")
+        print(f"Set param type: {type(request.set_param)}")
+        
         result = await dvc_exp_run(
             user_id, project_id,
             quiet=request.quiet,
@@ -452,14 +665,25 @@ async def run_experiment(user_id: str, project_id:str, request: RunExperimentReq
             ignore_errors=request.ignore_errors,
             targets=request.targets,
         )
+        
+        print(f"Experiment created successfully: {result}")
         return {"message": "Experiment run successfully", "output": result}
     except Exception as e:
+        print(f"Error creating experiment: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print(f"Error traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{user_id}/{project_id}/exp/show")
-async def show_experiments(user_id: str, project_id:str, request: ShowExperimentsRequest): 
+async def show_experiments(user_id: str, project_id:str, request: ShowExperimentsRequest):
     try:
-        result = await dvc_exp_show(user_id, project_id, quiet=request.quiet,
+        print(f"Showing experiments for user {user_id}, project {project_id}")
+        print(f"Show request: {request.dict()}")
+        
+        result = await dvc_exp_show(
+            user_id, project_id,
+            quiet=request.quiet,
             verbose=request.verbose,
             all=request.all,
             include_working_tree=request.include_working_tree,
@@ -478,8 +702,29 @@ async def show_experiments(user_id: str, project_id:str, request: ShowExperiment
             only_changed=request.only_changed,
             force=request.force,
         )
+        
+        print(f"Experiments show result length: {len(result)}")
+        print(f"Experiments show result preview: {result[:200]}...")
+        print(f"Experiments show result type: {type(result)}")
+        
+        # Try to parse as JSON to see the structure
+        try:
+            import json
+            parsed_result = json.loads(result)
+            print(f"Parsed JSON structure: {type(parsed_result)}")
+            if isinstance(parsed_result, list):
+                print(f"Number of experiment items: {len(parsed_result)}")
+                for i, item in enumerate(parsed_result):
+                    print(f"Item {i}: {type(item)}, keys: {list(item.keys()) if isinstance(item, dict) else 'not dict'}")
+        except Exception as parse_error:
+            print(f"Could not parse result as JSON: {parse_error}")
+        
         return {"message": "Experiments shown successfully", "output": result}
     except Exception as e:
+        print(f"Error showing experiments: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print(f"Error traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{user_id}/{project_id}/exp/list")
@@ -1090,19 +1335,36 @@ async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecu
             duration = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds()
             
             # Detect models produced by scanning the project directory
-            REPO_ROOT = "/home/marialuiza/Documents/faculdade/9periodo/poc/git_repo"
-            project_path = os.path.join(REPO_ROOT, user_id, project_id)
-            models_produced = []
-            if os.path.exists(project_path):
-                model_extensions = ['.pkl', '.joblib', '.h5', '.hdf5', '.pb', '.onnx', '.pt', '.pth', '.model', '.bin']
-                for root, dirs, files in os.walk(project_path):
-                    for file in files:
-                        if any(file.endswith(ext) for ext in model_extensions):
-                            file_path = os.path.join(root, file)
-                            file_stat = os.stat(file_path)
-                            # Check if file was modified during execution
-                            if file_stat.st_mtime >= datetime.fromisoformat(start_time).timestamp():
-                                models_produced.append(file_path)
+            models_produced = await identify_models_produced(user_id, project_id, start_time)
+            
+            # Parse the result to extract structured information
+            try:
+                execution_output = await parse_execution_output_and_stats(user_id, project_id, result, request.parameters or {})
+                print(f"[execute_pipeline] Parsing successful: {execution_output}")
+            except Exception as parse_error:
+                print(f"[execute_pipeline] Parsing failed: {parse_error}")
+                import traceback
+                traceback.print_exc()
+                # Create a fallback execution output
+                execution_output = {
+                    "stdout": result,
+                    "stderr": str(parse_error),
+                    "structured_logs": [],
+                    "summary": {
+                        "stages_executed": 0,
+                        "stages_skipped": 0,
+                        "stages_failed": 1,
+                        "total_stages": 0
+                    },
+                    "pipeline_stats": {
+                        "output_files": [],
+                        "models_produced": [],
+                        "parameters_used": request.parameters or {},
+                        "executed_stages": [],
+                        "skipped_stages": [],
+                        "failed_stages": []
+                    }
+                }
             
             # Update execution record with success
             await executions_collection.update_one(
@@ -1112,13 +1374,18 @@ async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecu
                         "status": "completed",
                         "end_time": end_time,
                         "duration": duration,
-                        "output_files": [],  # Will be populated from result parsing if needed
-                        "models_produced": models_produced,
-                        "logs": [result] if result else [],  # Store the output as logs
+                        "output_files": execution_output["pipeline_stats"]["output_files"],  # Will be populated from result parsing if needed
+                        "models_produced": execution_output["pipeline_stats"]["models_produced"],
+                        "logs": [result] if result else [],  # Store the raw output as logs
+                        "execution_output": execution_output,  # Store structured output
                         "metrics": {}  # Will be populated from result parsing if needed
                     }
                 }
             )
+            
+            print(f"[execute_pipeline] Final execution_output: {execution_output}")
+            print(f"[execute_pipeline] Summary: {execution_output['summary']}")
+            print(f"[execute_pipeline] Pipeline stats: {execution_output['pipeline_stats']}")
             
             return {
                 "execution_id": execution_id,
@@ -1134,6 +1401,11 @@ async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecu
             end_time = datetime.now().isoformat()
             duration = (datetime.fromisoformat(end_time) - datetime.fromisoformat(start_time)).total_seconds()
             
+            # Create structured error output using the parsing function
+            error_output = await parse_execution_output_and_stats(user_id, project_id, f"Error: {str(e)}", request.parameters or {})
+            error_output["stderr"] = str(e)
+            error_output["summary"]["stages_failed"] = 1
+            
             # Update execution record with failure
             await executions_collection.update_one(
                 {"execution_id": execution_id},
@@ -1143,7 +1415,10 @@ async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecu
                         "end_time": end_time,
                         "duration": duration,
                         "error_message": str(e),
-                        "logs": [f"Error: {str(e)}"]
+                        "logs": [f"Error: {str(e)}"],
+                        "execution_output": error_output,
+                        "output_files": error_output["pipeline_stats"]["output_files"],
+                        "models_produced": error_output["pipeline_stats"]["models_produced"]
                     }
                 }
             )
@@ -1155,7 +1430,7 @@ async def execute_pipeline(user_id: str, project_id: str, request: PipelineExecu
                 "end_time": end_time,
                 "duration": duration,
                 "output": None,
-                "models_produced": [],
+                "models_produced": error_output["pipeline_stats"]["models_produced"],
                 "error": str(e)
             }
             
@@ -1767,7 +2042,7 @@ async def create_remote_storage(user_id: str, project_id: str, request: CreateRe
         try:
             # Add remote storage using DVC
             remote_type = "default" if request.is_default else "cache"
-            result = await add_remote_storage(
+            dvc_result = await add_remote_storage(
                 user_id=user_id,
                 project_id=project_id,
                 name=request.name,
@@ -1775,10 +2050,22 @@ async def create_remote_storage(user_id: str, project_id: str, request: CreateRe
                 remote_type=remote_type
             )
             
+            # Extract the sanitized name from the DVC result
+            # The result message contains the sanitized name
+            sanitized_name_match = re.search(r"Remote storage '([^']+)' added successfully", dvc_result)
+            if sanitized_name_match:
+                sanitized_name = sanitized_name_match.group(1)
+                # Update the database record with the sanitized name if it's different
+                if sanitized_name != request.name:
+                    await remote_storages_collection.update_one(
+                        {"_id": ObjectId(remote_id)},
+                        {"$set": {"name": sanitized_name, "updated_at": datetime.now().isoformat()}}
+                    )
+            
             return {
                 "message": "Remote storage created successfully",
                 "id": remote_id,
-                "dvc_result": result
+                "dvc_result": dvc_result
             }
             
         except Exception as e:
@@ -2716,6 +3003,7 @@ async def execute_pipeline_config(user_id: str, project_id: str, config_id: str,
         
         # Execute the pipeline
         print("Executing pipeline...")
+        start_time = datetime.now().isoformat()
         execution_result = await repro(
             user_id=user_id,
             project_id=project_id,
@@ -2724,12 +3012,25 @@ async def execute_pipeline_config(user_id: str, project_id: str, config_id: str,
             dry_run=request.dry_run if request else False
         )
         
+        # Identify models produced during execution
+        models_produced = await identify_models_produced(user_id, project_id, start_time)
+        
+        # Parse the result to extract structured information
+        execution_output = await parse_execution_output_and_stats(user_id, project_id, execution_result, request.parameters or {})
+        
         # Update pipeline configuration with execution info
         await pipeline_configs_collection.update_one(
             {"_id": ObjectId(config_id)},
             {
                 "$set": {
                     "last_executed": datetime.now().isoformat(),
+                    "last_execution_result": {
+                        "status": "completed",
+                        "output": execution_result,
+                        "execution_output": execution_output,
+                        "models_produced": models_produced,
+                        "duration": (datetime.now() - datetime.fromisoformat(start_time)).total_seconds()
+                    },
                     "execution_count": config.get("execution_count", 0) + 1,
                     "updated_at": datetime.now().isoformat()
                 }
@@ -2741,6 +3042,7 @@ async def execute_pipeline_config(user_id: str, project_id: str, config_id: str,
             "config_id": config_id,
             "config_name": config["name"],
             "execution_result": execution_result,
+            "models_produced": models_produced,
             "validation": validation_result
         }
         
@@ -3256,7 +3558,8 @@ async def get_pipeline_executions(user_id: str, project_id: str, page: int = 1, 
                 logs=execution.get("logs", []),
                 error_message=execution.get("error_message"),
                 parameters_used=execution.get("parameters_used", {}),
-                metrics=execution.get("metrics", {})
+                metrics=execution.get("metrics", {}),
+                execution_output=execution.get("execution_output")
             ) for execution in executions],
             total_count=total_count,
             page=page,

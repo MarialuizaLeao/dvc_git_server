@@ -263,6 +263,29 @@ export interface PipelineExecution {
     error_message?: string;
     parameters_used: Record<string, any>;
     metrics: Record<string, any>;
+    execution_output?: {
+        stdout: string;
+        stderr: string;
+        structured_logs: Array<{
+            type: 'stage_start' | 'stage_skipped' | 'error' | 'pipeline_status' | 'info';
+            message: string;
+            timestamp: string;
+        }>;
+        summary: {
+            stages_executed: number;
+            stages_skipped: number;
+            stages_failed: number;
+            total_stages: number;
+        };
+        pipeline_stats?: {
+            output_files: string[];
+            models_produced: string[];
+            parameters_used: Record<string, any>;
+            executed_stages: string[];
+            skipped_stages: string[];
+            failed_stages: string[];
+        };
+    };
 }
 
 export interface PipelineExecutionListResponse {

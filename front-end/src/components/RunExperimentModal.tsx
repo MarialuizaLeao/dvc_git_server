@@ -60,6 +60,22 @@ const RunExperimentModal = ({ isOpen, onClose, onRun, isLoading = false, userId,
     // Load current parameters when modal opens
     useEffect(() => {
         if (isOpen) {
+            // Reset form data when modal opens
+            setFormData({
+                experiment_name: '',
+                message: '',
+                set_param: [] as string[],
+                force: false,
+                queue: false,
+                temp: false,
+                recursive: false,
+                pipeline: false,
+                dry: false,
+            });
+            setParameterSet(null);
+            setParameterError(null);
+
+            // Load fresh parameters
             loadCurrentParameters();
         }
     }, [isOpen, userId, projectId]);
@@ -103,15 +119,26 @@ const RunExperimentModal = ({ isOpen, onClose, onRun, isLoading = false, userId,
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Convert parameter values to set_param format as a dictionary
+        // Convert parameter values to set_param format maintaining nested structure
         const setParamValues: Record<string, any> = {};
         if (parameterSet) {
             parameterSet.groups.forEach(group => {
+                // Create a nested structure for each group
+                const groupParams: Record<string, any> = {};
+                let hasGroupParams = false;
+
                 group.parameters.forEach(param => {
+                    // Only include parameters that have been explicitly changed from their original values
                     if (param.value !== undefined && param.value !== null && param.value !== '') {
-                        setParamValues[param.name] = param.value;
+                        groupParams[param.name] = param.value;
+                        hasGroupParams = true;
                     }
                 });
+
+                // Only add the group if it has parameters
+                if (hasGroupParams) {
+                    setParamValues[group.name] = groupParams;
+                }
             });
         }
 
@@ -133,6 +160,7 @@ const RunExperimentModal = ({ isOpen, onClose, onRun, isLoading = false, userId,
             }
         });
 
+        console.log('Submitting experiment with params:', params);
         onRun(params);
     };
 

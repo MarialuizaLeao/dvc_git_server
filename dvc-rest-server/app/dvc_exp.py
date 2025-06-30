@@ -86,60 +86,6 @@ async def dvc_exp_run(user_id: str, project_id: str,quiet: bool = False,
     if not os.path.exists(dvc_dir):
         raise Exception(f"DVC not initialized: {dvc_dir} not found")
     
-    # If we have parameters to set, first update the params.yaml file
-    if set_param and isinstance(set_param, dict):
-        params_file = os.path.join(project_path, "params.yaml")
-        
-        # Read existing params.yaml if it exists
-        existing_params = {}
-        if os.path.exists(params_file):
-            try:
-                with open(params_file, 'r') as f:
-                    existing_params = yaml.safe_load(f) or {}
-            except Exception as e:
-                logger.warning(f"Could not read existing params.yaml: {e}")
-                existing_params = {}
-        
-        # Check if this is a DVC project with stages
-        dvc_yaml_path = os.path.join(project_path, "dvc.yaml")
-        stage_params = {}
-        if os.path.exists(dvc_yaml_path):
-            try:
-                with open(dvc_yaml_path, 'r') as f:
-                    dvc_config = yaml.safe_load(f)
-                    if dvc_config and 'stages' in dvc_config:
-                        # Extract stage parameters
-                        for stage_name, stage_config in dvc_config['stages'].items():
-                            if 'params' in stage_config:
-                                for param in stage_config['params']:
-                                    if '.' in param:
-                                        stage, param_name = param.split('.', 1)
-                                        if stage == stage_name:
-                                            stage_params[param_name] = stage_name
-            except Exception as e:
-                logger.warning(f"Could not read dvc.yaml: {e}")
-        
-        # Update parameters with proper structure
-        updated_params = existing_params.copy()
-        for param_name, param_value in set_param.items():
-            # Check if this parameter belongs to a specific stage
-            if param_name in stage_params:
-                stage_name = stage_params[param_name]
-                if stage_name not in updated_params:
-                    updated_params[stage_name] = {}
-                updated_params[stage_name][param_name] = param_value
-            else:
-                # Add to root level if no stage association found
-                updated_params[param_name] = param_value
-        
-        # Write updated params.yaml
-        try:
-            with open(params_file, 'w') as f:
-                yaml.dump(updated_params, f, default_flow_style=False)
-            logger.info(f"Updated params.yaml with new parameters: {list(set_param.keys())}")
-        except Exception as e:
-            logger.warning(f"Could not update params.yaml: {e}")
-    
     command = "dvc exp run"
 
     if quiet:
@@ -169,41 +115,31 @@ async def dvc_exp_run(user_id: str, project_id: str,quiet: bool = False,
     if set_param:
         # Handle both list and dict formats
         if isinstance(set_param, dict):
-            # Check if this is a DVC project with stages
-            dvc_yaml_path = os.path.join(project_path, "dvc.yaml")
-            stage_params = {}
-            if os.path.exists(dvc_yaml_path):
-                try:
-                    with open(dvc_yaml_path, 'r') as f:
-                        dvc_config = yaml.safe_load(f)
-                        if dvc_config and 'stages' in dvc_config:
-                            # Extract stage parameters
-                            for stage_name, stage_config in dvc_config['stages'].items():
-                                if 'params' in stage_config:
-                                    for param in stage_config['params']:
-                                        if '.' in param:
-                                            stage, param_name = param.split('.', 1)
-                                            if stage == stage_name:
-                                                stage_params[param_name] = stage_name
-                except Exception as e:
-                    logger.warning(f"Could not read dvc.yaml for parameter conversion: {e}")
-            
-            # Convert dict to list of "key=value" strings with proper stage prefixes
+            # Convert nested dict to list of "section.param=value" strings
             param_list = []
-            for k, v in set_param.items():
-                if k in stage_params:
-                    # Use stage prefix for stage-specific parameters
-                    param_list.append(f"{stage_params[k]}.{k}={v}")
+            for section, section_params in set_param.items():
+                if isinstance(section_params, dict):
+                    for param_name, param_value in section_params.items():
+                        param_list.append(f"{section}.{param_name}={param_value}")
                 else:
-                    # Use regular format for root-level parameters
-                    param_list.append(f"{k}={v}")
+                    # Handle flat parameters (not in a section)
+                    param_list.append(f"{section}={section_params}")
+            logger.info(f"Converting nested parameter dict to list: {set_param} -> {param_list}")
         elif isinstance(set_param, list):
             param_list = set_param
+            logger.info(f"Using parameter list as-is: {param_list}")
         else:
             param_list = []
+            logger.warning(f"Unexpected set_param format: {type(set_param)}")
         
         if param_list:
+            # Force temp mode when parameters are provided to avoid modifying workspace
+            if not temp:
+                command += " --temp"
+                logger.info("Added --temp flag to prevent workspace modification")
             command += " " + " ".join(f"-S {param}" for param in param_list)
+            logger.info(f"Added parameters to command: {param_list}")
+            logger.info(f"Final command: {command}")
     if experiment_rev:
         command += f" -r {experiment_rev}"
     if cwd_reset:
@@ -350,6 +286,8 @@ async def dvc_exp_show(user_id: str, project_id: str,     quiet: bool = False,
     if force:
         command += " -f"
 
+    logger.info(f"Executing DVC exp show command: {command}")
+
     # Use full path to DVC and set proper environment
     env = os.environ.copy()
     env['PATH'] = f"{os.path.expanduser('~/.local/bin')}:{env.get('PATH', '')}"
@@ -360,9 +298,15 @@ async def dvc_exp_show(user_id: str, project_id: str,     quiet: bool = False,
     stdout, stderr = await process.communicate()
 
     if process.returncode != 0:
-        raise Exception(f"`dvc exp show` failed: {stderr.decode().strip()}")
+        error_msg = stderr.decode().strip() if stderr else "Unknown error"
+        logger.error(f"DVC exp show failed with return code {process.returncode}: {error_msg}")
+        raise Exception(f"`dvc exp show` failed: {error_msg}")
 
-    return stdout.decode().strip()
+    result = stdout.decode().strip()
+    logger.info(f"DVC exp show output length: {len(result)}")
+    logger.info(f"DVC exp show output preview: {result[:200]}...")
+    
+    return result
 
 async def dvc_exp_list(user_id: str, project_id: str, git_remote: str = None):
     """

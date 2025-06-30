@@ -14,10 +14,27 @@ const Experiments = () => {
 
     const handleCreateExperiment = async (data: CreateExperimentData) => {
         try {
-            await createExperimentMutation.mutateAsync(data);
+            console.log('Creating experiment with data:', data);
+            console.log('Current experiments before creation:', safeExperimentsData);
+
+            const result = await createExperimentMutation.mutateAsync(data);
+            console.log('Experiment created successfully:', result);
             setIsModalOpen(false);
+
+            // Force a refetch to ensure we get the latest data
+            setTimeout(() => {
+                console.log('Refetching experiments after creation...');
+                experiments.refetch();
+            }, 1000);
+
+            // Additional refetch after a longer delay to ensure DVC has finished
+            setTimeout(() => {
+                console.log('Second refetch after longer delay...');
+                experiments.refetch();
+            }, 3000);
         } catch (error) {
             console.error('Failed to create experiment:', error);
+            // You might want to show an error message to the user here
         }
     };
 
@@ -26,23 +43,39 @@ const Experiments = () => {
         try {
             const output = experiments.data?.output;
 
-            if (!output) return [];
+            if (!output) {
+                console.log('No output data available');
+                return [];
+            }
+
+            console.log('Raw experiments output:', output);
+            console.log('Output type:', typeof output);
 
             // If output is a string, try to parse it as JSON
             if (typeof output === 'string') {
-                const parsed = JSON.parse(output);
-                // DVC exp show --json returns an array of experiment objects
-                if (Array.isArray(parsed)) {
-                    return parsed;
+                try {
+                    const parsed = JSON.parse(output);
+                    // DVC exp show --json returns an array of experiment objects
+                    if (Array.isArray(parsed)) {
+                        console.log('Parsed experiments data:', parsed);
+                        return parsed;
+                    }
+                    console.log('Parsed data is not an array:', parsed);
+                    return [];
+                } catch (parseError) {
+                    console.error('Error parsing JSON string:', parseError);
+                    console.error('Raw output that failed to parse:', output);
+                    return [];
                 }
-                return [];
             }
 
             // If output is already an array
             if (Array.isArray(output)) {
+                console.log('Output is already an array:', output);
                 return output;
             }
 
+            console.log('Unexpected output format:', typeof output, output);
             return [];
         } catch (error) {
             console.error('Error parsing experiments data:', error);
@@ -52,25 +85,74 @@ const Experiments = () => {
 
     // Transform the experiments data to a more usable format
     const transformedExperiments = experimentsData.flatMap((item: any) => {
-        // If this item has experiments, extract them
-        if (item.experiments && Array.isArray(item.experiments)) {
-            return item.experiments.map((exp: any) => {
-                const firstRev = exp.revs && exp.revs[0];
-                if (!firstRev) return null;
+        try {
+            console.log('Processing experiment item:', item);
+            console.log('Item keys:', Object.keys(item));
 
-                // Extract parameters from the experiment's specific revision
-                const experimentParams = firstRev.data?.params?.['params.yaml']?.data || {};
+            // If this item has experiments, extract them
+            if (item.experiments && Array.isArray(item.experiments)) {
+                console.log('Found experiments array with', item.experiments.length, 'experiments');
 
-                // Extract only the experiment-specific parameters (the ones that were changed)
-                const experimentSpecificParams = (() => {
+                // If no experiments in this item, skip it (unless it's workspace)
+                if (item.experiments.length === 0 && item.rev !== 'workspace') {
+                    console.log('Skipping item with no experiments:', item.rev);
+                    return [];
+                }
+
+                return item.experiments.map((exp: any) => {
+                    console.log('Processing experiment:', exp);
+                    const firstRev = exp.revs && exp.revs[0];
+                    if (!firstRev) {
+                        console.log('No first revision found for experiment:', exp);
+                        return null;
+                    }
+
+                    // Extract parameters from the experiment's specific revision
+                    const experimentParams = firstRev.data?.params?.['params.yaml']?.data || {};
+
+                    // Extract only the experiment-specific parameters (the ones that were changed)
+                    const experimentSpecificParams = (() => {
+                        const specific: Record<string, any> = {};
+
+                        // Extract nested parameters first (these are usually the experiment-specific ones)
+                        for (const [section, sectionParams] of Object.entries(experimentParams)) {
+                            if (sectionParams && typeof sectionParams === 'object' && !Array.isArray(sectionParams)) {
+                                for (const [param, value] of Object.entries(sectionParams)) {
+                                    specific[`${section}.${param}`] = value;
+                                }
+                            }
+                        }
+
+                        return specific;
+                    })();
+
+                    const transformedExp = {
+                        id: firstRev.rev,
+                        name: firstRev.name || exp.name,
+                        rev: firstRev.rev,
+                        timestamp: firstRev.data?.timestamp,
+                        params: experimentSpecificParams,
+                        metrics: firstRev.data?.metrics?.['eval/metrics.json']?.data || {},
+                        deps: firstRev.data?.deps || {},
+                        outs: firstRev.data?.outs || {}
+                    };
+
+                    console.log('Transformed experiment:', transformedExp);
+                    return transformedExp;
+                }).filter(Boolean); // Remove null entries
+            }
+
+            // If this is a workspace item with data, treat it as a current experiment
+            if (item.rev === 'workspace' && item.data) {
+                console.log('Processing workspace item');
+                const workspaceParams = item.data.params?.['params.yaml']?.data || {};
+
+                // Flatten the nested parameter structure for better display
+                const flattenedWorkspaceParams = (() => {
                     const specific: Record<string, any> = {};
 
-                    // Look for parameters that were explicitly set for this experiment
-                    // These are typically the ones that differ from the baseline
-                    const allParams = experimentParams;
-
-                    // Extract nested parameters first (these are usually the experiment-specific ones)
-                    for (const [section, sectionParams] of Object.entries(allParams)) {
+                    // Extract nested parameters (these are usually the experiment-specific ones)
+                    for (const [section, sectionParams] of Object.entries(workspaceParams)) {
                         if (sectionParams && typeof sectionParams === 'object' && !Array.isArray(sectionParams)) {
                             for (const [param, value] of Object.entries(sectionParams)) {
                                 specific[`${section}.${param}`] = value;
@@ -81,56 +163,73 @@ const Experiments = () => {
                     return specific;
                 })();
 
-                return {
-                    id: firstRev.rev,
-                    name: firstRev.name || exp.name,
-                    rev: firstRev.rev,
-                    timestamp: firstRev.data?.timestamp,
-                    params: experimentSpecificParams,
-                    metrics: firstRev.data?.metrics?.['eval/metrics.json']?.data || {},
-                    deps: firstRev.data?.deps || {},
-                    outs: firstRev.data?.outs || {}
+                const workspaceExp = {
+                    id: 'workspace',
+                    name: 'Current Workspace',
+                    rev: 'workspace',
+                    timestamp: item.data.timestamp,
+                    params: flattenedWorkspaceParams,
+                    metrics: item.data.metrics?.['eval/metrics.json']?.data || {},
+                    deps: item.data.deps || {},
+                    outs: item.data.outs || {}
                 };
-            }).filter(Boolean); // Remove null entries
-        }
 
-        // If this is a workspace item with data, treat it as a current experiment
-        if (item.rev === 'workspace' && item.data) {
-            const workspaceParams = item.data.params?.['params.yaml']?.data || {};
+                console.log('Transformed workspace experiment:', workspaceExp);
+                return [workspaceExp];
+            }
 
-            // Flatten the nested parameter structure for better display
-            const flattenedWorkspaceParams = (() => {
-                const specific: Record<string, any> = {};
+            // If this is a direct experiment item (not nested)
+            if (item.rev && item.data) {
+                console.log('Processing direct experiment item:', item.rev);
+                const experimentParams = item.data.params?.['params.yaml']?.data || {};
 
-                // Extract nested parameters (these are usually the experiment-specific ones)
-                for (const [section, sectionParams] of Object.entries(workspaceParams)) {
-                    if (sectionParams && typeof sectionParams === 'object' && !Array.isArray(sectionParams)) {
-                        for (const [param, value] of Object.entries(sectionParams)) {
-                            specific[`${section}.${param}`] = value;
+                const flattenedParams = (() => {
+                    const specific: Record<string, any> = {};
+                    for (const [section, sectionParams] of Object.entries(experimentParams)) {
+                        if (sectionParams && typeof sectionParams === 'object' && !Array.isArray(sectionParams)) {
+                            for (const [param, value] of Object.entries(sectionParams)) {
+                                specific[`${section}.${param}`] = value;
+                            }
                         }
                     }
-                }
+                    return specific;
+                })();
 
-                return specific;
-            })();
+                const directExp = {
+                    id: item.rev,
+                    name: item.name || item.rev,
+                    rev: item.rev,
+                    timestamp: item.data.timestamp,
+                    params: flattenedParams,
+                    metrics: item.data.metrics?.['eval/metrics.json']?.data || {},
+                    deps: item.data.deps || {},
+                    outs: item.data.outs || {}
+                };
 
-            return [{
-                id: 'workspace',
-                name: 'Current Workspace',
-                rev: 'workspace',
-                timestamp: item.data.timestamp,
-                params: flattenedWorkspaceParams,
-                metrics: item.data.metrics?.['eval/metrics.json']?.data || {},
-                deps: item.data.deps || {},
-                outs: item.data.outs || {}
-            }];
+                console.log('Transformed direct experiment:', directExp);
+                return [directExp];
+            }
+
+            console.log('No matching condition for item:', item);
+            return [];
+        } catch (error) {
+            console.error('Error transforming experiment item:', item, error);
+            return [];
         }
-
-        return [];
     });
 
     // Ensure transformedExperiments is always an array
     const safeExperimentsData = Array.isArray(transformedExperiments) ? transformedExperiments : [];
+
+    // Only show workspace card if all other cards are just commit/master cards (no real experiments)
+    const onlyWorkspace =
+        safeExperimentsData.filter(exp => exp.rev !== 'workspace').length === 0;
+
+    const filteredExperimentsData = onlyWorkspace
+        ? safeExperimentsData.filter(exp => exp.rev === 'workspace')
+        : safeExperimentsData;
+
+    console.log('Final experiments data:', filteredExperimentsData);
 
     return (
         <div className="h-full flex flex-col">
@@ -172,7 +271,7 @@ const Experiments = () => {
                             Tentar Novamente
                         </button>
                     </div>
-                ) : safeExperimentsData.length === 0 ? (
+                ) : filteredExperimentsData.length === 0 ? (
                     <div className="text-center py-12">
                         <div className="text-gray-400 text-6xl mb-4">🧪</div>
                         <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum Experimento Encontrado</h3>
@@ -188,7 +287,7 @@ const Experiments = () => {
                     </div>
                 ) : (
                     <div className="grid gap-6">
-                        {safeExperimentsData.map((experiment: any, index: number) => (
+                        {filteredExperimentsData.map((experiment: any, index: number) => (
                             <div
                                 key={experiment.id || experiment.rev || index}
                                 className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow"

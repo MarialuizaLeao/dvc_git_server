@@ -9,15 +9,42 @@ export const useExperiments = (userId: string, projectId: string) => {
     const experiments = useQuery({
         queryKey: ['experiments', userId, projectId],
         queryFn: async () => {
+            console.log('Fetching experiments for user:', userId, 'project:', projectId);
             const response = await experimentsApi.list(userId, projectId);
+            console.log('Experiments API response:', response.data);
+            console.log('Experiments API response type:', typeof response.data);
+            console.log('Experiments API response output:', response.data?.output);
             return response.data;
+        },
+        onError: (error: unknown) => {
+            console.error('Error fetching experiments:', error);
+        },
+        onSuccess: (data: any) => {
+            console.log('Experiments query succeeded with data:', data);
         },
     });
 
     const createExperiment = useMutation({
         mutationFn: (data: CreateExperimentData) => experimentsApi.create(userId, projectId, data),
-        onSuccess: () => {
+        onSuccess: (data) => {
+            console.log('Experiment created, invalidating queries:', data);
+            console.log('Invalidating query key:', ['experiments', userId, projectId]);
             queryClient.invalidateQueries({ queryKey: ['experiments', userId, projectId] });
+
+            // Also try to refetch immediately
+            setTimeout(() => {
+                console.log('Forcing immediate refetch of experiments...');
+                queryClient.refetchQueries({ queryKey: ['experiments', userId, projectId] });
+            }, 500);
+
+            // Additional refetch after longer delay
+            setTimeout(() => {
+                console.log('Forcing delayed refetch of experiments...');
+                queryClient.refetchQueries({ queryKey: ['experiments', userId, projectId] });
+            }, 2000);
+        },
+        onError: (error) => {
+            console.error('Error creating experiment:', error);
         },
     });
 

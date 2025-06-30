@@ -23,8 +23,35 @@ export default function RemoteStorageModal({
         is_default: false
     });
 
+    const [validationError, setValidationError] = useState<string>('');
+
+    const validateName = (name: string): string => {
+        if (!name.trim()) {
+            return 'Remote name is required';
+        }
+        if (name.length > 50) {
+            return 'Remote name must be 50 characters or less';
+        }
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+            return 'Remote name can only contain letters, numbers, hyphens, and underscores';
+        }
+        return '';
+    };
+
+    const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newName = e.target.value;
+        setFormData({ ...formData, name: newName });
+        setValidationError(validateName(newName));
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        const nameError = validateName(formData.name);
+        if (nameError) {
+            setValidationError(nameError);
+            return;
+        }
+        setValidationError('');
         onSubmit(formData);
     };
 
@@ -85,11 +112,18 @@ export default function RemoteStorageModal({
                         <input
                             type="text"
                             value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onChange={handleNameChange}
+                            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${validationError ? 'border-red-500' : 'border-gray-300'
+                                }`}
                             placeholder="e.g., my-s3-storage, gcs-backup, etc."
                             required
                         />
+                        {validationError && (
+                            <p className="text-red-600 text-sm mt-1">{validationError}</p>
+                        )}
+                        <p className="text-sm text-gray-500 mt-1">
+                            Use only letters, numbers, hyphens, and underscores (max 50 characters)
+                        </p>
                     </div>
 
                     <div>
@@ -166,7 +200,7 @@ export default function RemoteStorageModal({
                         </button>
                         <button
                             type="submit"
-                            disabled={isLoading}
+                            disabled={isLoading || !!validationError}
                             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isLoading ? 'Configuring...' : 'Configure Storage'}

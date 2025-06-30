@@ -598,6 +598,7 @@ class PipelineExecution(BaseModel):
     error_message: Optional[str] = None
     parameters_used: Dict[str, Any] = {}
     metrics: Dict[str, Any] = {}
+    execution_output: Optional[Dict[str, Any]] = None  # Structured execution output
 
 class PipelineExecutionCreate(BaseModel):
     pipeline_config_id: str

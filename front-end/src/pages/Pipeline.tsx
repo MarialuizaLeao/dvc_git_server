@@ -5,6 +5,7 @@ import { useProjects } from '../hooks/useProjects';
 import { CURRENT_USER } from '../constants/user';
 import Card from '../components/Card';
 import PipelineConfigModal from '../components/PipelineConfigModal';
+import ExecutionOutputViewer from '../components/ExecutionOutputViewer';
 import { pipelineExecutionApi } from '../services/api';
 import { useQuery } from '@tanstack/react-query';
 import type { Pipeline, PipelineExecutionRequest, PipelineExecution } from '../types/api';
@@ -14,6 +15,8 @@ export default function Pipeline() {
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     const [isExecuting, setIsExecuting] = useState(false);
     const [activeTab, setActiveTab] = useState<'overview' | 'executions'>('overview');
+    const [selectedExecution, setSelectedExecution] = useState<PipelineExecution | null>(null);
+    const [isOutputViewerOpen, setIsOutputViewerOpen] = useState(false);
 
     const { getProject } = useProjects(CURRENT_USER.id);
     const { data: project, isLoading: projectLoading } = getProject(projectId || '');
@@ -30,7 +33,7 @@ export default function Pipeline() {
     const { data: pipeline, isLoading: pipelineLoading } = getPipeline();
 
     // Fetch execution history
-    const { data: executions, isLoading: executionsLoading } = useQuery({
+    const { data: executions, isLoading: executionsLoading, refetch: refetchExecutions } = useQuery({
         queryKey: ['pipeline-executions', CURRENT_USER.id, projectId],
         queryFn: () => pipelineExecutionApi.getExecutions(CURRENT_USER.id, projectId || ''),
         enabled: !!projectId && activeTab === 'executions'
@@ -88,15 +91,23 @@ export default function Pipeline() {
     };
 
     const handleRecoverPipeline = async () => {
-        if (window.confirm('Are you sure you want to recover this pipeline?')) {
-            try {
-                const result = await recoverPipelineMutation.mutateAsync();
-                alert(`Pipeline recovered successfully! ${result.stages_applied} stages applied.`);
-            } catch (error) {
-                console.error('Failed to recover pipeline:', error);
-                alert('Failed to recover pipeline. Please check the console for details.');
-            }
+        try {
+            await recoverPipelineMutation.mutateAsync();
+            alert('Pipeline recovered successfully!');
+        } catch (error) {
+            console.error('Failed to recover pipeline:', error);
+            alert('Failed to recover pipeline. Please check the console for details.');
         }
+    };
+
+    const handleViewExecutionOutput = (execution: PipelineExecution) => {
+        setSelectedExecution(execution);
+        setIsOutputViewerOpen(true);
+    };
+
+    const handleCloseOutputViewer = () => {
+        setIsOutputViewerOpen(false);
+        setSelectedExecution(null);
     };
 
     const getStatusColor = (isActive: boolean) => {
@@ -364,6 +375,15 @@ export default function Pipeline() {
 
                     {activeTab === 'executions' && (
                         <Card title="Histórico de Execução do Pipeline">
+                            <div className="flex justify-between items-center mb-4">
+                                <div></div>
+                                <button
+                                    onClick={() => refetchExecutions()}
+                                    className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                                >
+                                    Atualizar
+                                </button>
+                            </div>
                             {executionsLoading ? (
                                 <div className="flex items-center justify-center h-32">
                                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
@@ -393,17 +413,25 @@ export default function Pipeline() {
                                                 </div>
                                                 <div>
                                                     <span className="text-gray-500">Modelos Produzidos:</span>
-                                                    <div className="font-medium">{execution.models_produced.length}</div>
+                                                    <div className="font-medium">
+                                                        {execution.execution_output?.pipeline_stats?.models_produced.length || execution.models_produced.length}
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <span className="text-gray-500">Arquivos de Saída:</span>
-                                                    <div className="font-medium">{execution.output_files.length}</div>
+                                                    <div className="font-medium">
+                                                        {execution.execution_output?.pipeline_stats?.output_files.length || execution.output_files.length}
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <span className="text-gray-500">Parâmetros:</span>
-                                                    <div className="font-medium">{Object.keys(execution.parameters_used).length}</div>
+                                                    <div className="font-medium">
+                                                        {Object.keys(execution.execution_output?.pipeline_stats?.parameters_used || execution.parameters_used).length}
+                                                    </div>
                                                 </div>
                                             </div>
+
+
 
                                             {execution.models_produced.length > 0 && (
                                                 <div className="mt-3">
@@ -424,6 +452,15 @@ export default function Pipeline() {
                                                     <div className="text-sm text-red-600 mt-1">{execution.error_message}</div>
                                                 </div>
                                             )}
+
+                                            <div className="mt-3 flex justify-end">
+                                                <button
+                                                    onClick={() => handleViewExecutionOutput(execution)}
+                                                    className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                                                >
+                                                    Ver Saída
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -463,6 +500,15 @@ export default function Pipeline() {
                 }
                 isLoading={createPipelineMutation.isPending || updatePipelineMutation.isPending}
             />
+
+            {/* Execution Output Viewer */}
+            {selectedExecution && (
+                <ExecutionOutputViewer
+                    execution={selectedExecution}
+                    isOpen={isOutputViewerOpen}
+                    onClose={handleCloseOutputViewer}
+                />
+            )}
         </div>
     );
 } 

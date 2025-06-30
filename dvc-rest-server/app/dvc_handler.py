@@ -9,6 +9,7 @@ import yaml
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+import re
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -1181,19 +1182,34 @@ async def add_remote_storage(user_id: str, project_id: str, name: str, url: str,
     if not os.path.exists(project_path):
         raise Exception(f"Project path does not exist: {project_path}")
     
+    # Validate and sanitize the remote name
+    if not name or not name.strip():
+        raise Exception("Remote storage name cannot be empty")
+    
+    # Sanitize the name: remove spaces and special characters, keep only alphanumeric, hyphens, and underscores
+    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name.strip())
+    
+    # Ensure the name is not empty after sanitization
+    if not sanitized_name:
+        raise Exception("Remote storage name cannot be empty after sanitization")
+    
+    # Limit the name length to avoid issues
+    if len(sanitized_name) > 50:
+        sanitized_name = sanitized_name[:50]
+    
     try:
-        # Add remote storage
-        await run_command_async(f"dvc remote add {name} {url}", cwd=project_path)
+        # Add remote storage using sanitized name
+        await run_command_async(f"dvc remote add {sanitized_name} {url}", cwd=project_path)
         
         # Set as default if specified
         if remote_type == "default":
-            await run_command_async(f"dvc remote default {name}", cwd=project_path)
+            await run_command_async(f"dvc remote default {sanitized_name}", cwd=project_path)
         
         # Commit changes
         await run_command_async("git add .dvc/config", cwd=project_path)
-        await run_command_async(f'git commit -m "Added remote storage: {name}"', cwd=project_path)
+        await run_command_async(f'git commit -m "Added remote storage: {sanitized_name}"', cwd=project_path)
         
-        return f"Remote storage '{name}' added successfully"
+        return f"Remote storage '{sanitized_name}' added successfully"
         
     except Exception as e:
         raise Exception(f"Failed to add remote storage: {str(e)}")
